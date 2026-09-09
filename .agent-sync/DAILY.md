@@ -49,7 +49,8 @@ Initialization created TEAM.md, ROUTING.md, and the ordered TASKS.md backlog.
 - [x] TASK-004: Stage 4 — Level definitions and game engine. Implemented by `/root/stage4_implementation` in the tdd-guide role; verified and reviewed. Created only levels.py, game.py, test_levels.py, and test_game.py. File claims released; all Stage 1–3 files remain byte-for-byte unchanged.
 - [x] TASK-005: Stage 5 — Fake trap engine. Implemented by `/root/stage5_implementation`; verified and reviewed. Created traps.py and test_traps.py, with the necessary config.py compatibility change for optional trap settings. File claims released.
 - [x] TASK-006: Stage 6 — OS-action isolation. Implemented by `/root/stage6_implementation`; verified and reviewed. Added os_actions.py/test_os_actions.py and gated integration/regression tests in traps.py/test_traps.py. File claims released.
-- TASK-007 through TASK-011 remain pending and are outside this pass.
+- [x] TASK-007: Stage 7 — Cryptographic primitives. Implemented by `/root/stage7_implementation`; verified and reviewed. Added vault/__init__.py, vault/crypto.py, and test_crypto.py only. File claims released; all earlier implementation/configuration/tests unchanged.
+- TASK-008 through TASK-011 remain pending and are outside this pass.
 
 ## 3. Veto Buffer
 
@@ -60,12 +61,12 @@ Stage 1 resolved only unspecified representation details: `cooldown_until` is nu
 ## 4. Evening Telemetry
 
 - Initialization roster: 12 agents and 7 skills retained; 14 agents and 13 skills pruned with reasons in TEAM.md.
-- Implementation tasks complete: 6 / 11.
-- Git: Stage 5 ce4bdd7 was pushed unchanged to private origin/main before Stage 6 implementation. The user authorized the reviewed Stage 6 checkpoint and push; commit hashes are recorded in Git history. No force push or history rewrite.
-- Application tests: 56 OS-action tests, 152 trap tests, and 437 full-suite tests passed on each of Python 3.12.14 and Python 3.14.7; audit guards recorded zero actual OS invocation attempts.
-- Package validation: ten-module wheel built and installed on both Python versions. Installed checks passed for every default trap, each gate, fake effects/cooldowns preceding mocked OS dispatch, fixed mocked Linux invocations, unsupported platforms, inert parser/game input, and unchanged vault bytes.
-- Reviews: Stages 1–5 remain approved. Stage 6 `/root/stage6_spec_review` PASS; `/root/stage6_code_review` APPROVE under code-reviewer, python-reviewer, and security-reviewer checklists. No findings remained.
-- Next task: TASK-007 — Cryptographic primitives, unblocked but not started or dispatched.
+- Implementation tasks complete: 7 / 11.
+- Git: Stage 6 deb8e772d841b63a4e3f09dad2389d1a78dd8f0c was verified on private origin/main before Stage 7. The user authorized the reviewed Stage 7 checkpoint and push; final commit hashes are recorded in Git history. No force push or history rewrite.
+- Application tests: 126 crypto tests and 563 full-suite tests passed on each of Python 3.12.14 and Python 3.14.7; audit guards recorded zero actual OS invocation attempts. All 437 earlier tests remain unchanged and passing.
+- Package validation: twelve-module wheel built and installed on both Python versions. Independent installed checks passed for the NIST vector, exact envelope/AAD, AESGCM/stream interoperability, bounded reads, tampering, partial-file clearing, key check, nonce freshness, and fixed-parameter UTF-8 Argon2id derivation.
+- Reviews: Stages 1–6 remain approved. Stage 7 `/root/stage7_spec_review` PASS; `/root/stage7_code_review` APPROVE; `/root/stage7_security_review` APPROVE. No findings remained.
+- Next task: TASK-008 — Vault storage, unblocked but not started or dispatched.
 - Workflow metrics are local orchestration records only; they do not add telemetry to the vault application.
 
 ## Stage 1 verification evidence
@@ -283,4 +284,47 @@ The ten-module wheel was built from a temporary source copy using pip wheel --no
 
 Specification review `/root/stage6_spec_review`: PASS, independently reran 208 guarded tests (0.42s). Subsequent code/Python/security review `/root/stage6_code_review`: APPROVE, no findings; independently reran 208 guarded tests (0.42s). No unresolved veto items. No specification deviation was required: limited platform support follows the user's explicit unsupported-platform rule. Stage 5 test assumptions about inactive real settings and forbidden OS imports were narrowly updated for the authorized Stage 6 integration, with stronger default-safety guards retained.
 
-Stage 6 is complete and ready for its authorized verified Git checkpoint/push. Stage 7 is unblocked, pending, and has not been started or dispatched.
+Stage 6 completed with its authorized verified Git checkpoint/push. At that completion, Stage 7 was unblocked but had not been started or dispatched.
+
+
+## Stage 7 authorization and dispatch — 2026-09-09
+
+The user authorized Stage 7 cryptographic primitives only, including final reviewed commit and private-origin push. Work starts from clean main at deb8e772d841b63a4e3f09dad2389d1a78dd8f0c. Scope is vault/__init__.py, vault/crypto.py, test_crypto.py, and minimal tracking; no storage/session/initialization flow. Installed cryptography 50.0.0 on Python 3.14.7 and 50.0.1 on Python 3.12.14 provide the required Argon2id/AES-GCM APIs.
+
+The user supplies the exact envelope and KDF parameters missing from truncated plan code blocks. Plan sections 27/34 assign final temporary-file publication/removal to Stage 8. Stage 7 will operate on caller-owned binary temporary streams with explicit failed-decryption cleanup; no storage publication is added. Salt/key-check binary fields use standard base64 text for JSON-compatible primitive values, without wrapping encrypted vault records. No existing configuration change is currently required for these standalone primitives.
+
+
+## Stage 7 verification evidence — 2026-09-09
+
+Created only `src/vaultgame/vault/__init__.py`, `src/vaultgame/vault/crypto.py`, and `tests/test_crypto.py`; updated TASKS.md and this record. ROUTING.md is byte-identical after releasing claims. All Stage 1–6 source, configuration, tests, packaging, and dependencies are unchanged against deb8e772d841b63a4e3f09dad2389d1a78dd8f0c. No storage.py, session.py, initialization/authentication flow, or Stage 8 functionality was introduced.
+
+All nine specified functions and VaultFormatError/IntegrityError are implemented. Argon2id accepts the application password string and encodes UTF-8 once, with no normalization or extra transformation. The version-1 dictionary requires a base64 salt decoding to 16 bytes and exact integer parameters: iterations=3, memory_kib=65536, lanes=4, length=32. Invalid, excessive, alternate, or boolean parameters are rejected before library construction. Salt creation remains the later initialization caller's responsibility. No passwords or keys are persisted or logged.
+
+AES-256-GCM requires exactly 32-byte keys. Each byte, stream, or key-check encryption obtains a fresh os.urandom(12) nonce. The fixed record is RVLT (4 bytes), version 1 (1 byte), type 1 manifest/type 2 file (1 byte), nonce (12 bytes), ciphertext, and full final tag (16 bytes). Header size is 18; minimum record size is 34. There is no record wrapper, padding, compression, extra hash, or tag truncation. parse_record_header returns (record_type, nonce); its optional measured record_size permits streaming validation using exactly one header.
+
+AAD is deterministic UTF-8: relayvault:v1:<vault_id>:key-check, relayvault:v1:<vault_id>:manifest, or relayvault:v1:<vault_id>:file:<object_id>. Empty/missing file IDs, colon-ambiguous IDs, extra object IDs for non-file purposes, and invalid UTF-8 IDs are rejected. Key checks encrypt exactly relayvault-key-check-v1 and return JSON-compatible base64 nonce and ciphertext/tag fields. Authentication or authenticated-marker mismatch raises IntegrityError; malformed representations/envelopes and expected-type mismatches raise VaultFormatError. Raw InvalidTag never escapes the public API.
+
+Streaming uses the standard Cipher AES/GCM API and bounded 1 MiB reads. Decryption measures the envelope from the source's current position to EOF, validates the header, extracts the final 16-byte tag separately, authenticates AAD before updates, processes only ciphertext, and finalizes authentication before success. Both streaming APIs handle short writes; decryption also handles short reads. They require a fresh empty seekable writable private staging destination. Nonempty/same-object destinations are rejected before mutation. Errors and interrupts truncate staging output to zero before propagating. If cleanup itself fails, that error remains explicit with the original failure chained; callers must still close/unlink on any exception. Stage 8 owns private .partial file creation, removal, and final atomic publication under plan sections 27/34. This primitive contract adds no storage operations and makes no secure-deletion or memory-erasure claim. [Cryptography's GCM contract](https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.modes.GCM) requires withholding trust until finalization succeeds.
+
+No compatibility change or specification deviation was required. Standard base64 for JSON-only binary fields and the documented BinaryIO/header-parser contracts resolve unspecified representation details. The user supplied exact parameters/envelope fields missing from truncated plan blocks. Production defaults were not weakened for testing; no new dependency was added.
+
+Implementer observed initial RED from the missing vault package, then GREEN. Final parent verification used PYTHONDONTWRITEBYTECODE=1 and `/tmp/relay-stage6-pytest.py`, invoking pytest with `-p no:cacheprovider -q` and fail-closed process/system/signal audit guards:
+
+| Interpreter | Test selection | Result |
+|-------------|----------------|--------|
+| Python 3.14.7 | tests/test_crypto.py | 126 passed in 0.68s |
+| Python 3.12.14 | tests/test_crypto.py | 126 passed in 0.80s |
+| Python 3.14.7 | complete suite | 563 passed in 1.79s |
+| Python 3.12.14 | complete suite | 563 passed in 1.45s |
+
+Interpreters remain `/tmp/relay-stage1-venv/bin/python` (cryptography 50.0.0) and `/tmp/relay-stage1-py312/bin/python` (cryptography 50.0.1). Python 3.12 uses PYTHONPATH=/tmp/relay-stage1-venv/lib/python3.14/site-packages for the existing pytest installation. Every guarded run reported zero actual subprocess/system/exec/spawn/signal attempts; no real OS action occurred.
+
+Tests cover genuine fixed-parameter Argon2id consistency and password/salt separation; a spy inspects exact UTF-8 input and library arguments. They independently decrypt envelope fields with AESGCM and verify the first NIST CAVS 14 AES-256-GCM known-answer vector from [pyca's public vector set](https://raw.githubusercontent.com/pyca/cryptography/main/vectors/cryptography_vectors/ciphers/AES/GCM/gcmEncryptExtIV256.rsp). Tests cover empty/binary/multi-chunk records, key-check marker and field tampering, structural errors, every relevant nonce/ciphertext/tag/AAD/key mutation, object swapping, manifest-to-file swapping even with a changed header, 96 fresh nonces across all encryption APIs, bounded/short I/O, I/O failures, KeyboardInterrupt, and explicit cleanup failures. Synthetic fixture keys/passwords/public vector material are not real secrets.
+
+A separate guarded standard-library trace run passed all 126 tests and measured crypto.py at 199/201 executable lines (99.0% line coverage). The trace-report helper filters non-line sentinels returned by Python 3.14's stdlib analysis; no product change was needed. This is line coverage, not branch coverage or a proof of security; no coverage dependency was installed.
+
+A wheel was built from a temporary source copy with pip wheel --no-cache-dir --no-build-isolation --no-deps, then installed in both environments with pip install --no-cache-dir --no-index --no-deps --force-reinstall. Audit confirmed all twelve packaged modules match source exactly and unchanged Python >=3.12/cryptography/pytest metadata. Installed checks ran outside the checkout on both versions: independent NIST vector and AESGCM interoperability, exact header/AAD/tag fields, bounded multi-chunk I/O, every-byte mutation of a small record, wrong-object rejection, real temporary-file truncation on authentication failure, key-check verification, fresh nonces, and independent fixed-parameter Argon2id comparison. No key/password output or actual OS invocation occurred.
+
+Specification review `/root/stage7_spec_review`: PASS, independently ran 126 guarded tests (0.58s). Subsequent code/Python review `/root/stage7_code_review`: APPROVE, zero findings, independently ran 126 guarded tests (0.60s). Dedicated security review `/root/stage7_security_review`: APPROVE, no blocking findings, independently ran 126 guarded tests (0.62s). Reviews explicitly inspected nonce generation/reuse, full tags and extraction, AAD ordering/binding, authentication-before-trust, error normalization, key/KDF sizes, stream cleanup, secret logging, and envelope arithmetic. No unresolved veto items.
+
+Pre-checkpoint Git/scope inspection found exactly the three new Stage 7 files and two tracking changes, with all claims released. Credential-pattern scans across tracked/untracked candidates found no private keys, GitHub/API/cloud credentials, or credential-bearing URLs. Manual review confirmed synthetic test contents only; no runtime config/state, encrypted .vlt files, plaintext .partial outputs, or private key artifacts exist in the working tree. Existing ignore protections remain intact. Private origin/main still matched the Stage 6 baseline before the Stage 7 checkpoint. Stage 7 is complete and ready for its authorized commit/push; the final hash and push outcome are reported with Git history. Stage 8 is unblocked, pending, and has not been started or dispatched.
