@@ -1,0 +1,1 @@
+"""Relay terminal vault application."""

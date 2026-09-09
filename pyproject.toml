@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vaultgame"
+version = "0.1.0"
+description = "A terminal game leading to a local encrypted vault"
+requires-python = ">=3.12"
+dependencies = ["cryptography>=44.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+relay = "vaultgame.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,54 @@
+# Python caches, environments, and build artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Local editor settings, temporary files, and OS junk
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local credentials (documented example environment files may be tracked)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Runtime homes include their config.json, state.json, vault/, and objects/.
+.relayvault/
+/runtime/
+/vault/
+/config.json
+/state.json
+/objects/
+manifest.vlt
+*.vlt
+
+# Retrieval/output locations outside source-controlled tests and fixtures
+/retrieved/
+/retrieved-*/
+/output/
+/outputs/
+
+# Local orchestration worktrees, exported sessions, and process state
+/.claude/worktrees/
+/.claude/settings.local.json
+/.agent-sync/logs/
+/.agent-sync/sessions/
+/.agent-sync/*.pid
+/.agent-sync/*.lock

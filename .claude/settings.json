@@ -1,0 +1,172 @@
+{
+  "model": "claude-sonnet-4-6",
+  "statusLine": {
+    "command": "python scripts/status.py 2>/dev/null || python3 scripts/status.py 2>/dev/null || py scripts/status.py 2>/dev/null || echo '⚡ A Team'"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit -m *)",
+      "Bash(git push*)",
+      "Bash(git worktree *)",
+      "Bash(git branch*)",
+      "Bash(git checkout *)",
+      "Bash(git stash*)",
+      "Bash(git fetch*)",
+      "Bash(git pull*)",
+      "Bash(npm install*)",
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(npx playwright *)",
+      "Bash(npx eslint *)",
+      "Bash(npx knip*)",
+      "Bash(npx depcheck*)",
+      "Bash(npx ts-prune*)",
+      "Bash(node *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip install *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(black *)",
+      "Bash(bandit *)",
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(go vet *)",
+      "Bash(go run *)",
+      "Bash(go mod *)",
+      "Bash(staticcheck *)",
+      "Bash(golangci-lint *)",
+      "Bash(govulncheck *)",
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo check *)",
+      "Bash(cargo audit *)",
+      "Bash(gh repo *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(psql *)",
+      "Bash(npx tsx *)",
+      "Bash(agent-browser *)",
+      "Bash(npm audit *)",
+      "Bash(python scripts/*)",
+      "Bash(python3 scripts/*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Agent(*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:nextjs.org)",
+      "WebFetch(domain:fastapi.tiangolo.com)",
+      "WebFetch(domain:docs.supabase.com)",
+      "Skill(using-a-team)",
+      "Skill(using-a-team:*)",
+      "Skill(verification-before-completion)",
+      "Skill(verification-before-completion:*)",
+      "Skill(systematic-debugging)",
+      "Skill(systematic-debugging:*)",
+      "Skill(subagent-driven-development)",
+      "Skill(subagent-driven-development:*)",
+      "Skill(brainstorming)",
+      "Skill(brainstorming:*)",
+      "Skill(executing-plans)",
+      "Skill(executing-plans:*)",
+      "Skill(writing-plans)",
+      "Skill(writing-plans:*)",
+      "Skill(dispatching-parallel-agents)",
+      "Skill(dispatching-parallel-agents:*)",
+      "Skill(finishing-a-development-branch)",
+      "Skill(finishing-a-development-branch:*)",
+      "Skill(using-git-worktrees)",
+      "Skill(using-git-worktrees:*)",
+      "Skill(test-driven-development)",
+      "Skill(test-driven-development:*)",
+      "Skill(writing-skills)",
+      "Skill(writing-skills:*)",
+      "Skill(api-contract-first)",
+      "Skill(api-contract-first:*)",
+      "Skill(incident-response)",
+      "Skill(incident-response:*)",
+      "Skill(data-migration)",
+      "Skill(data-migration:*)",
+      "Skill(performance-audit)",
+      "Skill(performance-audit:*)",
+      "Skill(architecture-audit)",
+      "Skill(architecture-audit:*)"
+    ]
+  },
+  "worktreeDirectory": ".claude/worktrees",
+  "plugins": {
+    "superpowers@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if test -f scripts/pre_tool_use.py; then python scripts/pre_tool_use.py 2>/dev/null || python3 scripts/pre_tool_use.py 2>/dev/null; else echo '[A Team] WARNING: security gate inactive (scripts/pre_tool_use.py missing — re-run installer)'; fi"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"skills/using-a-team/SKILL.md\" 2>/dev/null || cat \"hooks/session-start.md\" 2>/dev/null || echo '[A Team] Session started. Run /orchestrate init if INIT.md and .agent-sync/TEAM.md are missing.'"
+          },
+          {
+            "type": "command",
+            "command": "for f in scripts/pre_tool_use.py scripts/watcher.py scripts/status.py scripts/metrics.py scripts/session_export.py; do test -f \"$f\" || echo \"[A Team] WARNING: $f not found — enforcement inactive. Re-run the installer.\"; done"
+          },
+          {
+            "type": "command",
+            "command": "if test -f scripts/watcher.py; then (python scripts/watcher.py >/dev/null 2>&1 || python3 scripts/watcher.py >/dev/null 2>&1) & fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[A Team] File modified. Use code-reviewer agent before committing. Use verification-before-completion before claiming done.'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f scripts/metrics.py && (python scripts/metrics.py session_end 2>/dev/null || python3 scripts/metrics.py session_end 2>/dev/null) || true"
+          },
+          {
+            "type": "command",
+            "command": "test -f scripts/session_export.py && (python scripts/session_export.py 2>/dev/null || python3 scripts/session_export.py 2>/dev/null) || true"
+          }
+        ]
+      }
+    ]
+  }
+}
