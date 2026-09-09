@@ -271,3 +271,19 @@ def test_entry_point_routes_without_initializing(tmp_path, monkeypatch, capsys, 
     else:
         assert str(home) in output.out
     assert not home.exists()
+
+
+def test_optional_vault_id_round_trip(tmp_path):
+    paths = resolve_paths(tmp_path)
+    value = AppConfig(vault_id="test-vault-identity")
+    save_config_atomic(paths, value)
+    assert load_config(paths) == value
+    assert json.loads(paths.config_path.read_text()) == {
+        "schema_version": 1, "vault_id": "test-vault-identity",
+    }
+
+
+@pytest.mark.parametrize("vault_id", [None, "", 1, True, [], "ambiguous:id", "\ud800"])
+def test_malformed_vault_id_rejected(vault_id):
+    with pytest.raises(ConfigError):
+        validate_config({"schema_version": 1, "vault_id": vault_id})

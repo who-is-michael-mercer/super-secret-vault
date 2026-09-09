@@ -2,7 +2,7 @@
 
 Source: `IMPLEMENTATION_PLAN.md`, section 45. These tasks preserve its exact stage order and completion requirements. The plan remains authoritative if this backlog and the plan differ.
 
-Stages 1 through 7 are complete and verified. Stage 8 is unblocked but remains pending; all later stages are outside this pass. Run each stage's relevant pytest checks and fix failures before advancing. Automated tests must never perform real logout, reboot, shutdown, or terminal-closing actions; replace actual OS invocation at the isolation boundary.
+Stages 1 through 8 are complete and verified. Stage 9 is unblocked but remains pending; all later stages are outside this pass. Run each stage's relevant pytest checks and fix failures before advancing. Automated tests must never perform real logout, reboot, shutdown, or terminal-closing actions; replace actual OS invocation at the isolation boundary.
 
 ## Ordered backlog
 
@@ -13,7 +13,7 @@ Stages 1 through 7 are complete and verified. Stage 8 is unblocked but remains p
 - [x] TASK-005: Stage 5 — Fake trap engine <!-- COMPLETE; depends_on: TASK-004; agent: tdd-guide; 87 Stage 5 tests and 316 full-suite tests passed on Python 3.12.14 and 3.14.7; wheel/import checks passed; spec and code/Python/security reviews approved; config compatibility extension only; no push -->
 - [x] TASK-006: Stage 6 — OS-action isolation <!-- COMPLETE; depends_on: TASK-005; agent: tdd-guide; 56 OS-action tests, 152 trap tests, 437 full-suite tests passed on Python 3.12.14 and 3.14.7; guarded tests executed zero real OS actions; wheel/import checks passed; spec and code/Python/security reviews approved -->
 - [x] TASK-007: Stage 7 — Cryptographic primitives <!-- COMPLETE; depends_on: TASK-006; agent: tdd-guide; 126 crypto tests and 563 full-suite tests passed on Python 3.12.14 and 3.14.7; installed wheel/independent crypto checks passed; spec, code/Python, and security reviews approved; Stages 1–6 unchanged -->
-- [ ] TASK-008: Stage 8 — Vault storage <!-- PENDING; depends_on: TASK-007; agent: tdd-guide -->
+- [x] TASK-008: Stage 8 — Vault storage <!-- COMPLETE; depends_on: TASK-007; agent: tdd-guide; 133 storage tests, 126 crypto tests, 704 full-suite tests passed on Python 3.12.14 and 3.14.7; installed wheel/manual lifecycle checks passed; spec, code/Python, and security reviews approved; optional vault_id compatibility only; Stage 7 crypto unchanged -->
 - [ ] TASK-009: Stage 9 — Authentication and vault session <!-- PENDING; depends_on: TASK-008; agent: tdd-guide -->
 - [ ] TASK-010: Stage 10 — Main integration <!-- PENDING; depends_on: TASK-009; agent: tdd-guide -->
 - [ ] TASK-011: Stage 11 — End-to-end testing <!-- PENDING; depends_on: TASK-010; agent: e2e-runner -->

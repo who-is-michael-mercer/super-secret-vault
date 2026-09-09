@@ -29,6 +29,7 @@ class AppConfig:
     schema_version: int = 1
     traps: dict | None = None
     real_os_actions: dict | None = None
+    vault_id: str | None = None
 
 
 @dataclass
@@ -75,10 +76,18 @@ def is_initialized(paths: AppPaths) -> bool:
 
 
 def validate_config(data) -> AppConfig:
-    if not isinstance(data, dict) or not set(data) <= {"schema_version", "traps", "real_os_actions"}:
+    if not isinstance(data, dict) or not set(data) <= {"schema_version", "traps", "real_os_actions", "vault_id"}:
         raise ConfigError("Configuration contains unsupported fields.")
     if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         raise ConfigError("Configuration schema_version must be the integer 1.")
+    if "vault_id" in data:
+        vault_id = data["vault_id"]
+        if not isinstance(vault_id, str) or not vault_id or ":" in vault_id:
+            raise ConfigError("vault_id must be nonempty delimiter-free UTF-8 text.")
+        try:
+            vault_id.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ConfigError("vault_id must be valid UTF-8 text.") from exc
     for name, list_key, allowed in (
         ("traps", "disabled_traps", {"enabled", "disabled_traps"}),
         ("real_os_actions", "allowed_actions", {"enabled", "allowed_actions", "bindings"}),
@@ -102,6 +111,7 @@ def validate_config(data) -> AppConfig:
                 raise ConfigError("real_os_actions.bindings must map strings to strings.")
     return AppConfig(
         schema_version=1, traps=data.get("traps"), real_os_actions=data.get("real_os_actions"),
+        vault_id=data.get("vault_id"),
     )
 
 
