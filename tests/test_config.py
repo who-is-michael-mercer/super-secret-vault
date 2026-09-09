@@ -264,7 +264,7 @@ def test_entry_point_routes_without_initializing(tmp_path, monkeypatch, capsys):
 
     assert main([]) == 0
     output = capsys.readouterr()
-    assert str(home) in output.out
+    assert "relay init" in output.out
     assert not home.exists()
 
 
