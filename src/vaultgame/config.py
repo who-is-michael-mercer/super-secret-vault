@@ -1,6 +1,9 @@
 """Application paths and validated, atomic JSON persistence."""
 
+import base64
+import binascii
 import json
+import math
 import os
 import tempfile
 from dataclasses import asdict, dataclass
@@ -30,6 +33,10 @@ class AppConfig:
     traps: dict | None = None
     real_os_actions: dict | None = None
     vault_id: str | None = None
+    kdf: dict | None = None
+    encryption: dict | None = None
+    key_check: dict | None = None
+    auto_lock_seconds: float | None = None
 
 
 @dataclass
@@ -76,7 +83,8 @@ def is_initialized(paths: AppPaths) -> bool:
 
 
 def validate_config(data) -> AppConfig:
-    if not isinstance(data, dict) or not set(data) <= {"schema_version", "traps", "real_os_actions", "vault_id"}:
+    if not isinstance(data, dict) or not set(data) <= {"schema_version", "traps", "real_os_actions", "vault_id",
+                                                   "kdf", "encryption", "key_check", "auto_lock_seconds"}:
         raise ConfigError("Configuration contains unsupported fields.")
     if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         raise ConfigError("Configuration schema_version must be the integer 1.")
@@ -109,10 +117,62 @@ def validate_config(data) -> AppConfig:
                 for key, value in bindings.items()
             ):
                 raise ConfigError("real_os_actions.bindings must map strings to strings.")
+    if any(field in data for field in ("kdf", "encryption", "key_check", "auto_lock_seconds")):
+        _validate_initialized_fields(data)
     return AppConfig(
         schema_version=1, traps=data.get("traps"), real_os_actions=data.get("real_os_actions"),
-        vault_id=data.get("vault_id"),
+        vault_id=data.get("vault_id"), kdf=data.get("kdf"),
+        encryption=data.get("encryption"), key_check=data.get("key_check"),
+        auto_lock_seconds=data.get("auto_lock_seconds"),
     )
+
+
+def _binary_field(value, size=None):
+    try:
+        decoded = base64.b64decode(value.encode("ascii"), validate=True)
+    except (AttributeError, UnicodeError, ValueError, binascii.Error) as error:
+        raise ConfigError("Invalid base64 configuration field.") from error
+    if size is not None and len(decoded) != size:
+        raise ConfigError("Invalid binary configuration field length.")
+    return decoded
+
+
+def _validate_initialized_fields(data):
+    required = {"vault_id", "kdf", "encryption", "key_check", "auto_lock_seconds"}
+    if not required <= data.keys():
+        raise ConfigError("Initialized vault configuration is incomplete.")
+    kdf = data["kdf"]
+    parameters = {"iterations": 3, "memory_kib": 65536, "lanes": 4, "length": 32}
+    if (not isinstance(kdf, dict) or set(kdf) != {"salt", *parameters}
+            or any(type(kdf[name]) is not int or kdf[name] != value
+                   for name, value in parameters.items())):
+        raise ConfigError("Invalid version-1 Argon2id configuration.")
+    _binary_field(kdf["salt"], 16)
+    encryption = data["encryption"]
+    if (not isinstance(encryption, dict)
+            or encryption != {"algorithm": "AES-256-GCM", "format_version": 1}
+            or type(encryption["format_version"]) is not int):
+        raise ConfigError("Invalid version-1 encryption configuration.")
+    check = data["key_check"]
+    if not isinstance(check, dict) or set(check) != {"nonce", "ciphertext"}:
+        raise ConfigError("Invalid encrypted key check.")
+    _binary_field(check["nonce"], 12)
+    if len(_binary_field(check["ciphertext"])) < 16:
+        raise ConfigError("Truncated encrypted key check.")
+    timeout = data["auto_lock_seconds"]
+    if (type(timeout) not in (int, float) or timeout <= 0
+            or timeout > 1e308 or not math.isfinite(timeout)):
+        raise ConfigError("auto_lock_seconds must be finite and positive.")
+
+
+def validate_initialized_config(config: AppConfig) -> AppConfig:
+    """Require the complete fixed-format configuration before authentication."""
+    if not isinstance(config, AppConfig):
+        raise ConfigError("Expected application configuration.")
+    data = {key: value for key, value in asdict(config).items() if value is not None}
+    validated = validate_config(data)
+    _validate_initialized_fields(data)
+    return validated
 
 
 def _load_json(path: Path):
@@ -124,10 +184,10 @@ def _load_json(path: Path):
         raise ConfigError(f"Cannot load JSON from {path}: {exc}") from exc
 
 
-def save_config_atomic(paths: AppPaths, config: AppConfig) -> None:
+def save_config_atomic(paths: AppPaths, config: AppConfig, *, exclusive=False) -> None:
     data = {key: value for key, value in asdict(config).items() if value is not None}
     validate_config(data)
-    _save_json_atomic(paths.config_path, data)
+    _save_json_atomic(paths.config_path, data, exclusive=exclusive)
 
 
 def load_runtime_state(paths: AppPaths) -> RuntimeState:
@@ -155,13 +215,13 @@ def _validate_runtime_state(data) -> RuntimeState:
     return RuntimeState(cooldown_until=cooldown)
 
 
-def save_runtime_state_atomic(paths: AppPaths, state: RuntimeState) -> None:
+def save_runtime_state_atomic(paths: AppPaths, state: RuntimeState, *, exclusive=False) -> None:
     data = {"schema_version": 1, **asdict(state)}
     _validate_runtime_state(data)
-    _save_json_atomic(paths.state_path, data)
+    _save_json_atomic(paths.state_path, data, exclusive=exclusive)
 
 
-def _save_json_atomic(path: Path, data: dict) -> None:
+def _save_json_atomic(path: Path, data: dict, *, exclusive=False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = None
     try:
@@ -172,7 +232,10 @@ def _save_json_atomic(path: Path, data: dict) -> None:
             temporary_path = Path(temporary.name)
             json.dump(data, temporary, indent=2, allow_nan=False)
             temporary.write("\n")
-        os.replace(temporary_path, path)
+        if exclusive:
+            os.link(temporary_path, path, follow_symlinks=False)
+        else:
+            os.replace(temporary_path, path)
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)

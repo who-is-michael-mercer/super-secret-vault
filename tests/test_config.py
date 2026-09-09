@@ -258,18 +258,13 @@ def test_initialization_detection(tmp_path, missing):
         assert not is_initialized(paths)
 
 
-@pytest.mark.parametrize("arguments, exit_code", [([], 0), (["init"], 1)])
-def test_entry_point_routes_without_initializing(tmp_path, monkeypatch, capsys, arguments, exit_code):
+def test_entry_point_routes_without_initializing(tmp_path, monkeypatch, capsys):
     home = tmp_path / "application"
     monkeypatch.setenv("VAULTGAME_HOME", str(home))
 
-    assert main(arguments) == exit_code
+    assert main([]) == 0
     output = capsys.readouterr()
-    if arguments:
-        assert "initialization" in output.err.lower()
-        assert "not available" in output.err.lower()
-    else:
-        assert str(home) in output.out
+    assert str(home) in output.out
     assert not home.exists()
 
 
@@ -287,3 +282,97 @@ def test_optional_vault_id_round_trip(tmp_path):
 def test_malformed_vault_id_rejected(vault_id):
     with pytest.raises(ConfigError):
         validate_config({"schema_version": 1, "vault_id": vault_id})
+
+import base64
+
+
+def initialized_config_data():
+    return dict(schema_version=1, vault_id='test-vault',
+        kdf=dict(salt=base64.b64encode(bytes(16)).decode(), iterations=3,
+                 memory_kib=65536, lanes=4, length=32),
+        encryption=dict(algorithm='AES-256-GCM', format_version=1),
+        key_check=dict(nonce=base64.b64encode(bytes(12)).decode(),
+                       ciphertext=base64.b64encode(bytes(37)).decode()),
+        auto_lock_seconds=300)
+
+
+def test_initialized_config_round_trip(tmp_path):
+    data = initialized_config_data()
+    value = validate_config(data)
+    paths = resolve_paths(tmp_path)
+    save_config_atomic(paths, value)
+    assert load_config(paths) == value
+    assert json.loads(paths.config_path.read_text()) == data
+
+
+@pytest.mark.parametrize('field', ['vault_id', 'kdf', 'encryption', 'key_check', 'auto_lock_seconds'])
+def test_partial_initialized_config_rejected(field):
+    data = initialized_config_data()
+    del data[field]
+    with pytest.raises(ConfigError):
+        validate_config(data)
+
+
+@pytest.mark.parametrize('field, value', [
+    ('iterations', 2), ('iterations', True), ('iterations', 3.0),
+    ('memory_kib', 65535), ('memory_kib', 10**100), ('lanes', 8),
+    ('length', 16), ('salt', '%%%'), ('salt', None),
+    ('salt', base64.b64encode(bytes(15)).decode()), ('algorithm', 'Argon2id')])
+def test_invalid_kdf_rejected_before_library(field, value):
+    data = initialized_config_data()
+    data['kdf'][field] = value
+    with pytest.raises(ConfigError):
+        validate_config(data)
+
+
+@pytest.mark.parametrize('encryption', [None, {}, [], {'algorithm': 'AES-128-GCM', 'format_version': 1},
+    {'algorithm': 'AES-256-GCM', 'format_version': True},
+    {'algorithm': 'AES-256-GCM', 'format_version': 1, 'nonce': ''}])
+def test_invalid_encryption_metadata_rejected(encryption):
+    data = initialized_config_data()
+    data['encryption'] = encryption
+    with pytest.raises(ConfigError):
+        validate_config(data)
+
+
+@pytest.mark.parametrize('field, value', [('nonce', '%%%'), ('nonce', None),
+    ('nonce', base64.b64encode(bytes(11)).decode()), ('ciphertext', ''),
+    ('ciphertext', base64.b64encode(bytes(15)).decode()), ('extra', '')])
+def test_invalid_key_check_rejected(field, value):
+    data = initialized_config_data()
+    data['key_check'][field] = value
+    with pytest.raises(ConfigError):
+        validate_config(data)
+
+
+@pytest.mark.parametrize('timeout', [None, 0, -1, True, '300', float('inf'), float('nan'), 10**1000])
+def test_invalid_auto_lock_timeout_rejected(timeout):
+    data = initialized_config_data()
+    data['auto_lock_seconds'] = timeout
+    with pytest.raises(ConfigError):
+        validate_config(data)
+
+
+@pytest.mark.parametrize('timeout', [300, 1, 0.01])
+def test_positive_auto_lock_timeout_supported(timeout):
+    data = initialized_config_data()
+    data['auto_lock_seconds'] = timeout
+    assert validate_config(data).auto_lock_seconds == timeout
+
+
+@pytest.mark.parametrize('kind', ['config', 'state'])
+@pytest.mark.parametrize('existing', [False, True])
+def test_exclusive_json_publication(tmp_path, kind, existing):
+    paths = resolve_paths(tmp_path)
+    path = paths.config_path if kind == 'config' else paths.state_path
+    save = save_config_atomic if kind == 'config' else save_runtime_state_atomic
+    value = AppConfig() if kind == 'config' else RuntimeState()
+    if existing:
+        path.write_bytes(b'existing-private-data')
+        with pytest.raises(FileExistsError):
+            save(paths, value, exclusive=True)
+        assert path.read_bytes() == b'existing-private-data'
+    else:
+        save(paths, value, exclusive=True)
+        assert json.loads(path.read_text())['schema_version'] == 1
+    assert list(tmp_path.iterdir()) == [path]
