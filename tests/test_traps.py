@@ -19,6 +19,15 @@ from vaultgame.traps import TRAPS, TrapAction, TrapDefinition, TrapResult
 from vaultgame.terminal import Terminal
 
 
+@pytest.fixture(autouse=True)
+def forbid_real_processes(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Trap tests must never invoke a real process")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+
+
 def test_fixed_trap_catalog():
     expected = {
         "signal_scramble": [("scramble", None), ("clear", None)],
@@ -123,7 +132,10 @@ def test_cooldown_failure_is_controlled_and_preserves_state(tmp_path, monkeypatc
                                       "bindings": {"red_purge": "shutdown"}}},
     {"real_os_actions": {}},
 ])
-def test_configuration_round_trip_and_trap_gates(tmp_path, settings):
+def test_configuration_round_trip_and_trap_gates(tmp_path, settings, monkeypatch):
+    from vaultgame import os_actions
+    actions = []
+    monkeypatch.setattr(os_actions, "perform_os_action", actions.append)
     paths = resolve_paths(tmp_path)
     app_config = validate_config({"schema_version": 1, **settings})
     save_config_atomic(paths, app_config)
@@ -134,6 +146,7 @@ def test_configuration_round_trip_and_trap_gates(tmp_path, settings):
     disabled = settings.get("traps", {}).get("enabled") is False or "red_purge" in settings.get("traps", {}).get("disabled_traps", [])
     assert result.exit_program is not disabled
     assert bool(terminal.calls) is not disabled
+    assert actions == (["shutdown"] if settings.get("real_os_actions", {}).get("enabled") else [])
 
 
 @pytest.mark.parametrize("trap_id, countdown, duration", [
@@ -372,11 +385,11 @@ def test_trap_source_keeps_the_stage_boundary():
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            imports.add(node.module)
+            imports.update([node.module] if node.module else [alias.name for alias in node.names])
         elif isinstance(node, ast.Call):
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
             assert name not in forbidden_calls
-    assert imports <= {"collections.abc", "dataclasses", "datetime", "config", "terminal"}
+    assert imports <= {"collections.abc", "dataclasses", "datetime", "config", "terminal", "os_actions"}
     assert "\x1b" not in source
 
 
@@ -422,3 +435,183 @@ def test_ordered_callbacks_and_exit_are_returned_without_terminating(tmp_path, m
     )
     assert result == TrapResult(True, "archive_junction", 0)
     assert [call[0] for call in terminal.calls] == ["reset", "back", "lock", "clear"]
+
+
+@pytest.mark.parametrize("trap_id", list(TRAPS))
+@pytest.mark.parametrize("real_settings", [
+    None, {}, {"enabled": False, "allowed_actions": ["shutdown"], "bindings": {
+        trap_id: "shutdown" for trap_id in TRAPS
+    }},
+    {"enabled": True, "allowed_actions": [], "bindings": {
+        trap_id: "shutdown" for trap_id in TRAPS
+    }},
+    {"enabled": True, "allowed_actions": ["shutdown"], "bindings": {}},
+    {"enabled": True, "allowed_actions": ["reboot"], "bindings": {
+        trap_id: "shutdown" for trap_id in TRAPS
+    }},
+])
+def test_real_action_gates_preserve_every_fake_trap(tmp_path, monkeypatch, trap_id, real_settings):
+    from vaultgame import os_actions
+
+    def forbidden(*args):
+        pytest.fail("Incomplete real-action configuration reached the OS dispatcher")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    instant = datetime(2026, 9, 9, tzinfo=timezone.utc)
+    baseline_terminal = RecordingTerminal()
+    baseline_paths = resolve_paths(tmp_path / "baseline")
+    baseline = traps.dispatch_trap(
+        trap_id, baseline_terminal, AppConfig(), baseline_paths, now=lambda: instant,
+    )
+    terminal = RecordingTerminal()
+    paths = resolve_paths(tmp_path / "gated")
+    result = traps.dispatch_trap(
+        trap_id, terminal, AppConfig(real_os_actions=real_settings), paths, now=lambda: instant,
+    )
+    assert result == baseline
+    assert terminal.calls == baseline_terminal.calls
+    if result.cooldown_seconds:
+        assert paths.state_path.read_bytes() == baseline_paths.state_path.read_bytes()
+
+
+@pytest.mark.parametrize("trap_id", list(TRAPS))
+@pytest.mark.parametrize("action", ["close_terminal", "logout", "reboot", "shutdown"])
+def test_explicit_binding_dispatches_once_after_complete_fake_sequence(tmp_path, monkeypatch, trap_id, action):
+    from vaultgame import os_actions
+    paths = resolve_paths(tmp_path / "bound")
+    instant = datetime(2026, 9, 9, tzinfo=timezone.utc)
+    baseline_terminal = RecordingTerminal()
+    baseline = traps.dispatch_trap(
+        trap_id, baseline_terminal, AppConfig(), resolve_paths(tmp_path / "baseline"),
+        now=lambda: instant,
+    )
+    terminal = RecordingTerminal()
+    calls = []
+
+    def observe(bound_action):
+        assert terminal.calls == baseline_terminal.calls
+        if baseline.cooldown_seconds:
+            assert json.loads(paths.state_path.read_text())["cooldown_until"] == (
+                instant + timedelta(seconds=baseline.cooldown_seconds)
+            ).isoformat()
+        calls.append(bound_action)
+
+    monkeypatch.setattr(os_actions, "perform_os_action", observe)
+    result = traps.dispatch_trap(
+        trap_id, terminal, AppConfig(real_os_actions={
+            "enabled": True, "allowed_actions": [action], "bindings": {trap_id: action},
+        }), paths, now=lambda: instant,
+    )
+    assert result == baseline
+    assert calls == [action]
+
+
+@pytest.mark.parametrize("settings", [{"enabled": False}, {"disabled_traps": list(TRAPS)}])
+def test_disabled_traps_never_reach_explicit_os_bindings(tmp_path, monkeypatch, settings):
+    from vaultgame import os_actions
+
+    def forbidden(*args):
+        pytest.fail("Disabled trap reached OS dispatcher")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    config = AppConfig(traps=settings, real_os_actions={
+        "enabled": True, "allowed_actions": ["shutdown"],
+        "bindings": {trap_id: "shutdown" for trap_id in TRAPS},
+    })
+    for trap_id in TRAPS:
+        terminal = RecordingTerminal()
+        assert traps.dispatch_trap(trap_id, terminal, config, resolve_paths(tmp_path)) == TrapResult()
+        assert terminal.calls == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("action", ["shutdown now", "$(reboot)", "reboot; shutdown", "${ACTION}",
+                                  "/usr/bin/reboot", "SHUTDOWN", "poweroff", ""])
+def test_unsupported_binding_is_controlled_after_fake_actions(tmp_path, monkeypatch, action):
+    from vaultgame import os_actions
+    terminal = RecordingTerminal()
+    config = AppConfig(real_os_actions={
+        "enabled": True, "allowed_actions": [action], "bindings": {"red_purge": action},
+    })
+
+    def forbidden(*args):
+        pytest.fail("Unsupported symbol reached OS dispatcher")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    with pytest.raises(os_actions.UnsupportedActionError):
+        traps.dispatch_trap("red_purge", terminal, config, resolve_paths(tmp_path))
+    assert [call[0] for call in terminal.calls] == ["countdown", "messages", "messages", "clear"]
+
+
+@pytest.mark.parametrize("error_name", ["UnsupportedActionError", "ActionNotAllowedError"])
+def test_real_action_errors_remain_controlled_and_follow_cooldown(tmp_path, monkeypatch, error_name):
+    from vaultgame import os_actions
+    paths = resolve_paths(tmp_path)
+    terminal = RecordingTerminal()
+    failure = getattr(os_actions, error_name)("mocked OS rejection")
+    calls = []
+
+    def fail(action):
+        calls.append(action)
+        assert paths.state_path.exists()
+        assert [call[0] for call in terminal.calls] == ["messages", "countdown"]
+        raise failure
+
+    monkeypatch.setattr(os_actions, "perform_os_action", fail)
+    with pytest.raises(getattr(os_actions, error_name)) as raised:
+        traps.dispatch_trap("seal_lockout", terminal, AppConfig(real_os_actions={
+            "enabled": True, "allowed_actions": ["logout"], "bindings": {"seal_lockout": "logout"},
+        }), paths, now=lambda: datetime(2026, 9, 9, tzinfo=timezone.utc))
+    assert raised.value is failure
+    assert calls == ["logout"]
+
+
+def test_failed_fake_cooldown_prevents_real_action(tmp_path, monkeypatch):
+    from vaultgame import os_actions
+
+    def forbidden(*args):
+        pytest.fail("Failed fake sequence reached OS dispatcher")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    paths = resolve_paths(tmp_path)
+    paths.state_path.write_text("malformed")
+    with pytest.raises(traps.TrapError):
+        traps.dispatch_trap("auth_lockout", RecordingTerminal(), AppConfig(real_os_actions={
+            "enabled": True, "allowed_actions": ["shutdown"], "bindings": {"auth_lockout": "shutdown"},
+        }), paths)
+    assert paths.state_path.read_text() == "malformed"
+
+
+def test_unknown_trap_cannot_use_an_explicit_binding(tmp_path, monkeypatch):
+    from vaultgame import os_actions
+
+    def forbidden(*args):
+        pytest.fail("Unknown trap reached OS dispatcher")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    terminal = RecordingTerminal()
+    with pytest.raises(traps.TrapError):
+        traps.dispatch_trap("unknown", terminal, AppConfig(real_os_actions={
+            "enabled": True, "allowed_actions": ["reboot"], "bindings": {"unknown": "reboot"},
+        }), resolve_paths(tmp_path))
+    assert terminal.calls == []
+
+
+def test_shell_looking_input_and_game_trap_ids_cannot_bypass_gates(tmp_path, monkeypatch):
+    from vaultgame import os_actions
+    from vaultgame.game import GameEngine
+    from vaultgame.parser import parse_command
+
+    def forbidden(*args):
+        pytest.fail("Game input reached OS dispatcher without configuration gates")
+
+    monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
+    engine = GameEngine()
+    for line in ("reboot; shutdown", 'probe "$(shutdown now)"', 'inspect "foo | cat /etc/passwd"'):
+        request = engine.handle(parse_command(line))
+    assert request.trap_id == "signal_scramble"
+    assert traps.dispatch_trap(
+        request.trap_id, RecordingTerminal(), AppConfig(), resolve_paths(tmp_path),
+    ) == TrapResult()
+    assert engine.state.current_level == "dormant_relay"
+    assert list(tmp_path.iterdir()) == []

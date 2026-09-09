@@ -1,9 +1,10 @@
-"""Fictional terminal traps and callback-only game outcomes."""
+"""Fictional traps with explicitly gated, optional OS actions."""
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 
+from . import os_actions
 from .config import (
     AppConfig, AppPaths, ConfigError, load_runtime_state, save_runtime_state_atomic,
     validate_config,
@@ -71,7 +72,7 @@ def dispatch_trap(
 
     Reset/back callbacks may return a level ID, or None after mutating their
     own game object. A missing callback is a no-op. The clock must be aware.
-    Real OS-action settings are never dispatched here.
+    Explicitly enabled, bound, allowlisted OS actions run after all fake actions.
     """
     try:
         definition = TRAPS[trap_id]
@@ -131,4 +132,11 @@ def dispatch_trap(
             result = replace(result, exit_program=True)
         else:
             raise TrapError(f"Unknown trap action: {action.kind}")
+    real_actions = config.real_os_actions or {}
+    if real_actions.get("enabled", False):
+        bound_action = real_actions.get("bindings", {}).get(trap_id)
+        if bound_action is not None and bound_action in real_actions.get("allowed_actions", []):
+            if bound_action not in {"close_terminal", "logout", "reboot", "shutdown"}:
+                raise os_actions.UnsupportedActionError(f"Unsupported OS action: {bound_action}")
+            os_actions.perform_os_action(bound_action)
     return result

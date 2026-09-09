@@ -2,7 +2,7 @@
 
 Source: `IMPLEMENTATION_PLAN.md`, section 45. These tasks preserve its exact stage order and completion requirements. The plan remains authoritative if this backlog and the plan differ.
 
-Stages 1 through 5 are complete and verified. Stage 6 is unblocked but has not started; all later stages remain pending and are outside this pass. Run each stage's relevant pytest checks and fix failures before advancing. Automated tests must never perform real logout, reboot, shutdown, or terminal-closing actions; replace actual OS invocation at the isolation boundary.
+Stages 1 through 6 are complete and verified. Stage 7 is unblocked but has not started; all later stages remain pending and are outside this pass. Run each stage's relevant pytest checks and fix failures before advancing. Automated tests must never perform real logout, reboot, shutdown, or terminal-closing actions; replace actual OS invocation at the isolation boundary.
 
 ## Ordered backlog
 
@@ -11,7 +11,7 @@ Stages 1 through 5 are complete and verified. Stage 6 is unblocked but has not s
 - [x] TASK-003: Stage 3 — Command parser <!-- COMPLETE; depends_on: TASK-002; agent: tdd-guide; 33 parser tests and 151 full-suite tests passed on Python 3.12.14 and 3.14.7; wheel/import checks passed; spec and code/Python/security reviews approved; Stages 1 and 2 unchanged -->
 - [x] TASK-004: Stage 4 — Level definitions and game engine <!-- COMPLETE; depends_on: TASK-003; agent: tdd-guide; 78 Stage 4 tests and 229 full-suite tests passed on Python 3.12.14 and 3.14.7; wheel/import checks passed; spec and code/Python/security reviews approved; Stages 1–3 unchanged -->
 - [x] TASK-005: Stage 5 — Fake trap engine <!-- COMPLETE; depends_on: TASK-004; agent: tdd-guide; 87 Stage 5 tests and 316 full-suite tests passed on Python 3.12.14 and 3.14.7; wheel/import checks passed; spec and code/Python/security reviews approved; config compatibility extension only; no push -->
-- [ ] TASK-006: Stage 6 — OS-action isolation <!-- PENDING; depends_on: TASK-005; agent: tdd-guide -->
+- [x] TASK-006: Stage 6 — OS-action isolation <!-- COMPLETE; depends_on: TASK-005; agent: tdd-guide; 56 OS-action tests, 152 trap tests, 437 full-suite tests passed on Python 3.12.14 and 3.14.7; guarded tests executed zero real OS actions; wheel/import checks passed; spec and code/Python/security reviews approved -->
 - [ ] TASK-007: Stage 7 — Cryptographic primitives <!-- PENDING; depends_on: TASK-006; agent: tdd-guide -->
 - [ ] TASK-008: Stage 8 — Vault storage <!-- PENDING; depends_on: TASK-007; agent: tdd-guide -->
 - [ ] TASK-009: Stage 9 — Authentication and vault session <!-- PENDING; depends_on: TASK-008; agent: tdd-guide -->

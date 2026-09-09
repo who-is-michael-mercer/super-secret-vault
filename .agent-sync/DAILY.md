@@ -48,7 +48,8 @@ Initialization created TEAM.md, ROUTING.md, and the ordered TASKS.md backlog.
 - [x] TASK-003: Stage 3 — Command parser. Implemented by `/root/stage3_implementation` in the tdd-guide role; verified and reviewed. Created only parser.py and test_parser.py. File claims released; all Stage 1 and Stage 2 files remain byte-for-byte unchanged.
 - [x] TASK-004: Stage 4 — Level definitions and game engine. Implemented by `/root/stage4_implementation` in the tdd-guide role; verified and reviewed. Created only levels.py, game.py, test_levels.py, and test_game.py. File claims released; all Stage 1–3 files remain byte-for-byte unchanged.
 - [x] TASK-005: Stage 5 — Fake trap engine. Implemented by `/root/stage5_implementation`; verified and reviewed. Created traps.py and test_traps.py, with the necessary config.py compatibility change for optional trap settings. File claims released.
-- TASK-006 through TASK-011 remain pending and are outside this pass.
+- [x] TASK-006: Stage 6 — OS-action isolation. Implemented by `/root/stage6_implementation`; verified and reviewed. Added os_actions.py/test_os_actions.py and gated integration/regression tests in traps.py/test_traps.py. File claims released.
+- TASK-007 through TASK-011 remain pending and are outside this pass.
 
 ## 3. Veto Buffer
 
@@ -59,12 +60,12 @@ Stage 1 resolved only unspecified representation details: `cooldown_until` is nu
 ## 4. Evening Telemetry
 
 - Initialization roster: 12 agents and 7 skills retained; 14 agents and 13 skills pruned with reasons in TEAM.md.
-- Implementation tasks complete: 5 / 11.
-- Git: Stage 4 checkpoint 1bce91c is on private origin/main. Stage 5 is a reviewed local commit only; no automatic push. Existing README history is preserved.
-- Application tests: 87 Stage 5 tests and 316 full-suite tests passed, 0 failed, on each of Python 3.12.14 and Python 3.14.7.
-- Package validation: nine-module wheel built and installed in temporary environments on both Python versions. Installed game/trap integration checks passed, including false-probe callback reset, all five traps, UTC cooldowns, disabled traps, inert real-action settings, and unchanged vault/config bytes. Existing Stage 1–4 installed checks also pass.
-- Reviews: Stages 1–4 remain approved. Stage 5 `/root/stage5_spec_review` PASS; `/root/stage5_code_review` APPROVE under code-reviewer, python-reviewer, and security-reviewer checklists. No findings remained.
-- Next task: TASK-006 — OS-action isolation, unblocked but not started or dispatched.
+- Implementation tasks complete: 6 / 11.
+- Git: Stage 5 ce4bdd7 was pushed unchanged to private origin/main before Stage 6 implementation. The user authorized the reviewed Stage 6 checkpoint and push; commit hashes are recorded in Git history. No force push or history rewrite.
+- Application tests: 56 OS-action tests, 152 trap tests, and 437 full-suite tests passed on each of Python 3.12.14 and Python 3.14.7; audit guards recorded zero actual OS invocation attempts.
+- Package validation: ten-module wheel built and installed on both Python versions. Installed checks passed for every default trap, each gate, fake effects/cooldowns preceding mocked OS dispatch, fixed mocked Linux invocations, unsupported platforms, inert parser/game input, and unchanged vault bytes.
+- Reviews: Stages 1–5 remain approved. Stage 6 `/root/stage6_spec_review` PASS; `/root/stage6_code_review` APPROVE under code-reviewer, python-reviewer, and security-reviewer checklists. No findings remained.
+- Next task: TASK-007 — Cryptographic primitives, unblocked but not started or dispatched.
 - Workflow metrics are local orchestration records only; they do not add telemetry to the vault application.
 
 ## Stage 1 verification evidence
@@ -234,4 +235,52 @@ Safety tests prohibit unlink/remove/rmtree, file writes/traversal/replacement, a
 
 A wheel was built from a temporary source copy using `pip wheel --no-cache-dir --no-build-isolation --no-deps`, and installed with `pip install --no-cache-dir --no-index --no-deps --force-reinstall` on both Python versions. Audit confirmed exactly nine modules with byte-identical source and unchanged Python >=3.12, cryptography/pytest dependency metadata, and relay entry point. Installed Stage 4/5 boundary checks passed on both versions: unknown-command scramble, false_probe reset and prerequisite re-locking, all five traps, exact UTC cooldown durations, disabled dispatch, inactive real-action settings, and unchanged vault/config bytes. Stage 1–4 installed smoke checks also passed, including both CLI entry points and the 1,125 game command checks across 45 reachable state classes.
 
-Specification review `/root/stage5_spec_review`: PASS, independently reran 87 trap tests. Subsequent code/Python/security review `/root/stage5_code_review`: APPROVE, no findings; independently reran 140 trap/config tests. Git diff whitespace checks and scope audit passed. Stage 5 is complete, with its reviewed local commit recorded in Git history and no push performed. Stage 6 is unblocked, pending, and has not been started or dispatched.
+Specification review `/root/stage5_spec_review`: PASS, independently reran 87 trap tests. Subsequent code/Python/security review `/root/stage5_code_review`: APPROVE, no findings; independently reran 140 trap/config tests. Git diff whitespace checks and scope audit passed. Stage 5 is complete, with its reviewed local commit recorded in Git history and no push performed. At Stage 5 completion, Stage 6 was unblocked but had not been started or dispatched.
+
+
+## Stage 6 authorization and dispatch — 2026-09-09
+
+The user authorized Stage 6 only, including push of the unchanged Stage 5 commit before implementation and a verified Stage 6 checkpoint/push afterward. Private origin was verified; Stage 5 ce4bdd701e2bfeaf79040dc5be212144cd8a532a was pushed unchanged and remote main confirmed equal before Stage 6 began. No Stage 7 work is authorized.
+
+Scope: os_actions.py, strictly gated integration in traps.py, test_os_actions.py and necessary test_traps.py updates, plus tracking. Every test must mock the actual process invocation; no real machine action may execute. Stage 5 tests that asserted real settings were inert or prohibited the now-required traps-to-os_actions import need narrow updates for the Stage 6 boundary. Existing configuration shape/defaults need no change.
+
+
+## Stage 6 verification evidence — 2026-09-09
+
+Created `src/vaultgame/os_actions.py` and `tests/test_os_actions.py`. Changed only `src/vaultgame/traps.py` for the required post-fake OS-action boundary, `tests/test_traps.py` for gating/regression coverage, and TASKS.md/DAILY.md for tracking. ROUTING.md is unchanged after claims release. Configuration, dependencies, parser, game, level definitions, Terminal, entry points, and all other earlier files remain unchanged against Stage 5 ce4bdd7. No Stage 7 modules or functionality were introduced.
+
+The public OS API contains close_terminal(), logout(), reboot(), shutdown(), perform_os_action(action_name), UnsupportedActionError, and ActionNotAllowedError. Only four exact symbolic selectors are accepted. Linux support uses these fixed argument lists:
+
+- logout: `/usr/bin/loginctl --no-ask-password terminate-session` with a literal empty final argument, selecting the caller's session.
+- reboot: `/usr/bin/systemctl --no-ask-password reboot`.
+- shutdown: `/usr/bin/systemctl --no-ask-password poweroff`.
+- close_terminal: `/usr/bin/kitten @ close-window --self`, only for a narrowly identified local Kitty terminal.
+
+Each invocation uses subprocess.run with check=True, shell=False, timeout=10 and DEVNULL standard streams. Executable paths and arguments are constants; no game input, environment value, arbitrary path, shell fragment, alias, force flag, or privilege-escalation command is incorporated. Unknown platforms and missing executables raise UnsupportedActionError; permission, process, and timeout failures become ActionNotAllowedError.
+
+Terminal closing requires Linux, TERM=xterm-kitty, an ASCII decimal KITTY_WINDOW_ID, matching TTY input/output, and no SSH, tmux/screen, remote-control socket or password environment indicators. Unidentified/redirected terminals are unsupported; no parent processes are searched or killed. Windows, macOS, and other platforms are deliberately unsupported because the user restricted implementation to safely identifiable current-platform behavior. Kitty is optional and was not installed or invoked during this stage. Program exit remains the distinct fake trap outcome.
+
+Command semantics were verified read-only against installed systemd manpages and primary sources: [loginctl documentation](https://github.com/systemd/systemd/blob/main/man/loginctl.xml), [systemctl documentation](https://github.com/systemd/systemd/blob/main/man/systemctl.xml), and [Kitty remote control](https://sw.kovidgoyal.net/kitty/remote-control/). No live native-action command was executed to validate them.
+
+All normal fake/game actions complete before the real-action gate. A known, enabled trap must additionally have real_os_actions.enabled=true, an explicit binding for that trap ID, and the bound action in allowed_actions. The value must be one of the four supported symbolic names before traps calls os_actions.perform_os_action; the OS layer then checks platform support. Missing/false ordinary gates preserve the normal fake TrapResult. Unsupported symbolic bindings produce a controlled error. No default trap has a binding, no default enablement changed, and disabled traps cannot dispatch OS actions. Only traps.py imports the OS boundary; parser/game/levels/terminal do not. Future vault code is covered by the package-wide import-boundary test.
+
+Tests first installed fail-closed autouse subprocess.run/Popen guards before OS behavior was implemented or existing enabled-binding tests were exercised. Individual invocation tests override run only with a recorder or a controlled failure. Parent/reviewer verification added a Python audit hook that rejects subprocess.Popen, os.system, os.exec, os.posix_spawn, os.kill, and os.killpg events and asserts zero such attempts. No real terminal close, logout, reboot, shutdown, subprocess, or signal attempt occurred during these guarded tests.
+
+Actual final verification uses PYTHONDONTWRITEBYTECODE=1 and `/tmp/relay-stage6-pytest.py`, which invokes pytest with `-p no:cacheprovider -q` and the audit guard:
+
+| Interpreter | Test selection | Result |
+|-------------|----------------|--------|
+| Python 3.14.7 | tests/test_os_actions.py tests/test_traps.py | 208 passed in 0.43s (56 OS, 152 traps) |
+| Python 3.12.14 | tests/test_os_actions.py tests/test_traps.py | 208 passed in 0.45s |
+| Python 3.14.7 | complete suite | 437 passed in 1.21s |
+| Python 3.12.14 | complete suite | 437 passed in 0.98s |
+
+Interpreters remain `/tmp/relay-stage1-venv/bin/python` and `/tmp/relay-stage1-py312/bin/python`; the latter uses PYTHONPATH=/tmp/relay-stage1-venv/lib/python3.14/site-packages for the existing pytest installation. Every guarded run reported zero actual OS attempts. Implementer recorded RED/GREEN cycles for the missing API, native behavior, error conversion, post-fake dispatch, and supported-symbol validation.
+
+A separate guarded standard-library trace run passed all 208 focused tests and measured os_actions.py at 100.0% line coverage (49 executable lines), traps.py at 95.3% (107 executable lines). This is line coverage, not a branch-coverage claim; no dependency was added. Tests retain the prior fake-destructive byte/directory-preservation checks and exercise complete fake purge/exit and persisted cooldown before explicitly mocked OS dispatch. Disabled/default traps produce zero dispatcher calls. Shell-looking parser/game input remains inert.
+
+The ten-module wheel was built from a temporary source copy using pip wheel --no-cache-dir --no-build-isolation --no-deps and installed with pip install --no-cache-dir --no-index --no-deps --force-reinstall in both test environments. Audit verified byte-identical packaged source, unchanged Python >=3.12 and cryptography/pytest metadata, unchanged config.py, and the exact Stage 6 file scope. Installed smoke checks on both versions independently exercised all five traps across gate combinations, default/disabled safety, fake output and cooldown persistence before mocked dispatch, exact fixed Linux argv through a mocked subprocess.run, controlled unsupported platforms, unchanged vault bytes, and zero actual OS attempts. Earlier behavior remains covered by the complete 437-test suite; no old source changed beyond the required trap integration.
+
+Specification review `/root/stage6_spec_review`: PASS, independently reran 208 guarded tests (0.42s). Subsequent code/Python/security review `/root/stage6_code_review`: APPROVE, no findings; independently reran 208 guarded tests (0.42s). No unresolved veto items. No specification deviation was required: limited platform support follows the user's explicit unsupported-platform rule. Stage 5 test assumptions about inactive real settings and forbidden OS imports were narrowly updated for the authorized Stage 6 integration, with stronger default-safety guards retained.
+
+Stage 6 is complete and ready for its authorized verified Git checkpoint/push. Stage 7 is unblocked, pending, and has not been started or dispatched.
