@@ -24,7 +24,11 @@ class AppPaths:
 
 @dataclass
 class AppConfig:
+    """Optional sections retain legacy schema-only configuration when absent."""
+
     schema_version: int = 1
+    traps: dict | None = None
+    real_os_actions: dict | None = None
 
 
 @dataclass
@@ -71,11 +75,34 @@ def is_initialized(paths: AppPaths) -> bool:
 
 
 def validate_config(data) -> AppConfig:
-    if not isinstance(data, dict) or set(data) != {"schema_version"}:
-        raise ConfigError("Configuration must contain only schema_version.")
-    if type(data["schema_version"]) is not int or data["schema_version"] != 1:
+    if not isinstance(data, dict) or not set(data) <= {"schema_version", "traps", "real_os_actions"}:
+        raise ConfigError("Configuration contains unsupported fields.")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         raise ConfigError("Configuration schema_version must be the integer 1.")
-    return AppConfig(schema_version=1)
+    for name, list_key, allowed in (
+        ("traps", "disabled_traps", {"enabled", "disabled_traps"}),
+        ("real_os_actions", "allowed_actions", {"enabled", "allowed_actions", "bindings"}),
+    ):
+        if name not in data:
+            continue
+        section = data[name]
+        if not isinstance(section, dict) or not set(section) <= allowed:
+            raise ConfigError(f"{name} must be an object with supported fields.")
+        if "enabled" in section and type(section["enabled"]) is not bool:
+            raise ConfigError(f"{name}.enabled must be a boolean.")
+        values = section.get(list_key, [])
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            raise ConfigError(f"{name}.{list_key} must be a list of strings.")
+        if name == "real_os_actions":
+            bindings = section.get("bindings", {})
+            if not isinstance(bindings, dict) or any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in bindings.items()
+            ):
+                raise ConfigError("real_os_actions.bindings must map strings to strings.")
+    return AppConfig(
+        schema_version=1, traps=data.get("traps"), real_os_actions=data.get("real_os_actions"),
+    )
 
 
 def _load_json(path: Path):
@@ -88,7 +115,7 @@ def _load_json(path: Path):
 
 
 def save_config_atomic(paths: AppPaths, config: AppConfig) -> None:
-    data = asdict(config)
+    data = {key: value for key, value in asdict(config).items() if value is not None}
     validate_config(data)
     _save_json_atomic(paths.config_path, data)
 

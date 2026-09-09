@@ -1,0 +1,134 @@
+"""Fictional terminal traps and callback-only game outcomes."""
+
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timedelta, timezone
+
+from .config import (
+    AppConfig, AppPaths, ConfigError, load_runtime_state, save_runtime_state_atomic,
+    validate_config,
+)
+from .terminal import Terminal
+
+
+class TrapError(ValueError):
+    """A trap request is invalid or its cooldown could not be persisted."""
+
+
+@dataclass(frozen=True)
+class TrapAction:
+    kind: str
+    value: int | None = None
+
+
+@dataclass(frozen=True)
+class TrapDefinition:
+    id: str
+    actions: tuple[TrapAction, ...]
+
+
+@dataclass(frozen=True)
+class TrapResult:
+    exit_program: bool = False
+    new_level: str | None = None
+    cooldown_seconds: int = 0
+
+
+TRAPS = {
+    "signal_scramble": TrapDefinition("signal_scramble", (
+        TrapAction("scramble"), TrapAction("clear"),
+    )),
+    "false_probe": TrapDefinition("false_probe", (
+        TrapAction("fake_corruption"), TrapAction("progress", 1), TrapAction("reset_level"),
+    )),
+    "red_purge": TrapDefinition("red_purge", (
+        TrapAction("countdown", 5), TrapAction("fake_file_deletion"),
+        TrapAction("fake_purge"), TrapAction("clear"), TrapAction("exit_program"),
+    )),
+    "seal_lockout": TrapDefinition("seal_lockout", (
+        TrapAction("fake_corruption"), TrapAction("countdown", 10),
+        TrapAction("cooldown", 10), TrapAction("exit_program"),
+    )),
+    "auth_lockout": TrapDefinition("auth_lockout", (
+        TrapAction("fake_corruption"), TrapAction("countdown", 5),
+        TrapAction("cooldown", 30), TrapAction("exit_program"),
+    )),
+}
+
+
+def dispatch_trap(
+    trap_id: str,
+    terminal: Terminal,
+    config: AppConfig,
+    paths: AppPaths,
+    *,
+    reset_level: Callable[[], str | None] | None = None,
+    move_backward: Callable[[], str | None] | None = None,
+    lock_vault: Callable[[], None] | None = None,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+) -> TrapResult:
+    """Run ordered fake actions; the caller owns game/session state and exits.
+
+    Reset/back callbacks may return a level ID, or None after mutating their
+    own game object. A missing callback is a no-op. The clock must be aware.
+    Real OS-action settings are never dispatched here.
+    """
+    try:
+        definition = TRAPS[trap_id]
+    except (KeyError, TypeError) as exc:
+        raise TrapError(f"Unknown trap: {trap_id}") from exc
+    config = validate_config({
+        key: value for key, value in asdict(config).items() if value is not None
+    })
+    settings = config.traps or {}
+    if not settings.get("enabled", True) or trap_id in settings.get("disabled_traps", []):
+        return TrapResult()
+    result = TrapResult()
+    for action in definition.actions:
+        if action.kind in {"countdown", "progress", "cooldown"} and (
+            type(action.value) is not int or action.value < 0
+        ):
+            raise TrapError(f"{action.kind} requires nonnegative integer seconds.")
+        if action.kind == "scramble":
+            terminal.scramble_text("RELAY SIGNAL LOST")
+        elif action.kind == "clear":
+            terminal.clear()
+        elif action.kind == "fake_corruption":
+            terminal.fake_system_messages((
+                "INDEX_07.SYS: CHECKSUM FAILURE", "ARCHIVE_NODE_13: CORRUPTED",
+            ))
+        elif action.kind == "fake_file_deletion":
+            terminal.fake_system_messages(("DELETING INDEX_07.SYS", "DELETING MIRROR_CACHE.BIN"))
+        elif action.kind == "fake_purge":
+            terminal.fake_system_messages(("ARCHIVE_NODE_13: PURGE COMPLETE",))
+        elif action.kind == "fake_shutdown":
+            terminal.fake_system_messages(("RELAY SHUTDOWN SEQUENCE", "SIMULATED SYSTEM HALTED"))
+        elif action.kind == "progress":
+            terminal.progress("REBUILDING SIGNAL", action.value)
+        elif action.kind == "countdown":
+            terminal.countdown(action.value, prefix="RELAY COUNTDOWN: ")
+        elif action.kind == "reset_level":
+            if reset_level is not None:
+                result = replace(result, new_level=reset_level())
+        elif action.kind == "move_backward":
+            if move_backward is not None:
+                result = replace(result, new_level=move_backward())
+        elif action.kind == "lock_vault":
+            if lock_vault is not None:
+                lock_vault()
+        elif action.kind == "cooldown":
+            try:
+                state = load_runtime_state(paths)
+                instant = now()
+                if instant.utcoffset() is None:
+                    raise ConfigError("Cooldown clock must include a timezone.")
+                until = instant.astimezone(timezone.utc) + timedelta(seconds=action.value)
+                save_runtime_state_atomic(paths, replace(state, cooldown_until=until.isoformat()))
+            except (OSError, ConfigError) as exc:
+                raise TrapError(f"Cannot persist cooldown: {exc}") from exc
+            result = replace(result, cooldown_seconds=action.value)
+        elif action.kind == "exit_program":
+            result = replace(result, exit_program=True)
+        else:
+            raise TrapError(f"Unknown trap action: {action.kind}")
+    return result

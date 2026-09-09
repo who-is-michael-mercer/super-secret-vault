@@ -47,7 +47,8 @@ Initialization created TEAM.md, ROUTING.md, and the ordered TASKS.md backlog.
 - [x] TASK-002: Stage 2 — Terminal effects. Implemented by `/root/stage2_implementation` in the tdd-guide role; verified and reviewed. Created only terminal.py and test_terminal.py. File claims released; all Stage 1 files remain byte-for-byte unchanged.
 - [x] TASK-003: Stage 3 — Command parser. Implemented by `/root/stage3_implementation` in the tdd-guide role; verified and reviewed. Created only parser.py and test_parser.py. File claims released; all Stage 1 and Stage 2 files remain byte-for-byte unchanged.
 - [x] TASK-004: Stage 4 — Level definitions and game engine. Implemented by `/root/stage4_implementation` in the tdd-guide role; verified and reviewed. Created only levels.py, game.py, test_levels.py, and test_game.py. File claims released; all Stage 1–3 files remain byte-for-byte unchanged.
-- TASK-005 through TASK-011 remain pending and are outside this pass.
+- [x] TASK-005: Stage 5 — Fake trap engine. Implemented by `/root/stage5_implementation`; verified and reviewed. Created traps.py and test_traps.py, with the necessary config.py compatibility change for optional trap settings. File claims released.
+- TASK-006 through TASK-011 remain pending and are outside this pass.
 
 ## 3. Veto Buffer
 
@@ -58,12 +59,12 @@ Stage 1 resolved only unspecified representation details: `cooldown_until` is nu
 ## 4. Evening Telemetry
 
 - Initialization roster: 12 agents and 7 skills retained; 14 agents and 13 skills pruned with reasons in TEAM.md.
-- Implementation tasks complete: 4 / 11.
-- Git checkpoint: local main initialized after Stage 4 verification; existing GitHub README history preserved. The checkpoint commit is recorded in Git history.
-- Application tests: 78 Stage 4 tests (23 level definitions, 55 game engine) and 229 full-suite tests passed, 0 failed, on each of Python 3.12.14 and Python 3.14.7.
-- Package validation: updated wheel built and installed in temporary environments on both Python versions. Installed game checks passed for the successful route and 1,125 command checks across 45 reachable state classes per version. Existing parser, Terminal, CLI entry points, imports, and runtime JSON smoke checks still pass outside the source checkout.
-- Reviews: Stages 1–3 remain approved. Stage 4 `/root/stage4_spec_review` PASS; `/root/stage4_code_review` APPROVE under code-reviewer, python-reviewer, and security-reviewer checklists. No findings remained.
-- Next task: TASK-005 — Fake trap engine, unblocked but not started or dispatched.
+- Implementation tasks complete: 5 / 11.
+- Git: Stage 4 checkpoint 1bce91c is on private origin/main. Stage 5 is a reviewed local commit only; no automatic push. Existing README history is preserved.
+- Application tests: 87 Stage 5 tests and 316 full-suite tests passed, 0 failed, on each of Python 3.12.14 and Python 3.14.7.
+- Package validation: nine-module wheel built and installed in temporary environments on both Python versions. Installed game/trap integration checks passed, including false-probe callback reset, all five traps, UTC cooldowns, disabled traps, inert real-action settings, and unchanged vault/config bytes. Existing Stage 1–4 installed checks also pass.
+- Reviews: Stages 1–4 remain approved. Stage 5 `/root/stage5_spec_review` PASS; `/root/stage5_code_review` APPROVE under code-reviewer, python-reviewer, and security-reviewer checklists. No findings remained.
+- Next task: TASK-006 — OS-action isolation, unblocked but not started or dispatched.
 - Workflow metrics are local orchestration records only; they do not add telemetry to the vault application.
 
 ## Stage 1 verification evidence
@@ -170,7 +171,7 @@ The wheel was built from a temporary source copy using `pip wheel --no-cache-dir
 
 Independent installed-game checks on each version exercised the successful route/full reset and 1,125 command checks across 45 reachable state classes (unknown counts at or above three outside dormant are equivalent for these transitions). They verified fixed transition destinations, discovered help, all four trap boundaries, the prerequisite-gated authentication outcome, decoy isolation, and local resets. Tests additionally verify unchanged runtime sentinel files, independent game instances, and inert shell-looking input. AST/source inspection confirms only dataclasses, levels, and parser imports in game.py and only dataclasses in levels.py; no execution or persistence calls were introduced.
 
-Specification review `/root/stage4_spec_review`: PASS, no compliance gaps. Subsequent code/Python/security review `/root/stage4_code_review`: APPROVE, no findings; reviewer independently reran 78 focused tests (passed in 0.22s). Git review remains unavailable because this directory has no Git metadata. No unresolved veto items. Stage 4 is complete; Stage 5 is unblocked, pending, and has not been started or dispatched.
+Specification review `/root/stage4_spec_review`: PASS, no compliance gaps. Subsequent code/Python/security review `/root/stage4_code_review`: APPROVE, no findings; reviewer independently reran 78 focused tests (passed in 0.22s). Git review remains unavailable because this directory has no Git metadata. No unresolved veto items. At Stage 4 completion, Stage 5 was unblocked but had not been started or dispatched.
 
 
 ## Git checkpoint verification after Stage 4
@@ -189,3 +190,48 @@ Fresh pre-commit verification passed on both supported interpreters used by this
 The full working tree, including hidden orchestration files, was inventoried. All 78 files at inspection were text; Python and JSON files parsed. Checks covered credential/token patterns, hardcoded password/secret assignments, private keys, authenticated URLs, high-entropy strings, personal file content, runtime JSON, encrypted data, and retrieval artifacts. Findings were limited to an explicitly fake documentation API-key example, recorded verification command paths, and the Terminal scramble alphabet. No actual secrets or runtime/private vault files were found. The original one-line init metric is safe orchestration evidence; session/tool logs are excluded.
 
 .gitignore protects Python caches/environments/build output, editor/OS junk, local environment credentials, .relayvault homes, root runtime/vault/config/state/objects paths, encrypted .vlt files, root retrieval/output directories, and private orchestration logs/worktrees/process files. Forty representative private/generated paths were confirmed ignored and ten legitimate source/fixture paths confirmed trackable, including the future src/vaultgame/vault package. Custom VAULTGAME_HOME locations and arbitrary retrieval destinations still require review; ignore rules are a safeguard, not a substitute for the pre-commit inspection. No implementation or dependency changes were made.
+
+
+## Stage 5 authorization and dispatch
+
+The user authorized Stage 5 fake/configurable traps only, with no Stage 6 implementation or automatic push. The Stage 4 checkpoint 1bce91ce708e1ce689090a64ce61d1624f3f64c0 was successfully pushed to the private GitHub repository after the user changed visibility. Work begins from a clean main tracking origin/main.
+
+Concrete compatibility issue: AppConfig currently has only schema_version, and validate_config rejects every additional key. Stage 5 requires traps.enabled/disabled_traps configuration and inactive real_os_actions settings. Extend config.py minimally to load/save optional validated sections while retaining schema-only behavior; put compatibility tests in test_traps.py. All other Stage 1–4 files remain unchanged. Implement the user's explicit action sequences, which fill in the truncated catalog blocks in the plan.
+
+
+## Stage 5 verification evidence
+
+Implemented only `src/vaultgame/traps.py` and `tests/test_traps.py`, plus the documented `config.py` compatibility extension and TASKS.md/DAILY.md updates. Git comparison with the verified Stage 4 checkpoint confirms every other Stage 1–4 file is unchanged. No new dependencies, os_actions.py, vault modules, authentication implementation, or main integration were introduced. ROUTING.md is unchanged after releasing all file claims.
+
+The trap API is `dispatch_trap(trap_id, terminal, config, paths, *, reset_level=None, move_backward=None, lock_vault=None, now=UTC_clock)`. Frozen TrapAction(kind,value), TrapDefinition(id,actions), and TrapResult(exit_program,new_level,cooldown_seconds) hold ordinary Python data. Optional reset/back callbacks return a level ID or None; missing callbacks are no-ops. Only configured callback actions invoke them. The caller owns game/session state and program exit.
+
+| Trap | Exact ordered actions | Result |
+|------|-----------------------|--------|
+| signal_scramble | scramble, clear | neutral; no exit |
+| false_probe | fake_corruption, progress (1 second), reset_level | no exit; optional callback level ID |
+| red_purge | countdown 5, fake_file_deletion, fake_purge, clear, exit_program | exit_program=True |
+| seal_lockout | fake_corruption, countdown 10, cooldown 10, exit_program | exit_program=True, cooldown_seconds=10 |
+| auth_lockout | fake_corruption, countdown 5, cooldown 30, exit_program | exit_program=True, cooldown_seconds=30 |
+
+The action dispatcher also supports fake_shutdown, move_backward, and lock_vault for explicit Python trap definitions. All presentation delegates to Terminal, including messages, scrambling, progress, countdown, and clear. Filenames INDEX_07.SYS, ARCHIVE_NODE_13, and MIRROR_CACHE.BIN are invented constants. Trap code never enumerates files, accesses storage/crypto/session modules, executes a shell/process, emits raw ANSI, or sleeps directly. Enabled OS-action settings and bindings remain inert.
+
+Global or per-ID disabling returns a neutral TrapResult without terminal calls, callbacks, clock access, or persistence. Unknown IDs/actions and invalid timing values raise TrapError; malformed configuration raises ConfigError. Cooldown loads existing RuntimeState, replaces only cooldown_until, normalizes the injected aware clock to UTC, and saves through the existing same-directory temporary-file/replacement writer. The existing schema_version is preserved; the current RuntimeState has no other fields besides cooldown_until. Read/write failures become TrapError, failed replacement retains the previous state, and no success outcome is returned after persistence failure. Startup cooldown enforcement is not part of this stage.
+
+Compatibility details: optional traps and real_os_actions dictionaries now load/save with structural validation. Missing sections stay None and are omitted on save, preserving the old schema-only JSON representation. Missing trap settings mean enabled with no disabled IDs. The new real-action section is only structurally validated; Stage 6 policy/dispatch is absent. This was necessary because the old validator rejected every key other than schema_version. No other plan deviation was required. The explicit progress action represents the user's required false_probe sequence and does not duplicate Terminal timing.
+
+Actual final verification (all pytest calls use PYTHONDONTWRITEBYTECODE=1 and `-p no:cacheprovider`):
+
+| Interpreter | Check | Result |
+|-------------|-------|--------|
+| Python 3.14.7 | `-m pytest -p no:cacheprovider -q tests/test_traps.py` | 87 passed in 0.20s |
+| Python 3.12.14 | `-m pytest -p no:cacheprovider -q tests/test_traps.py` | 87 passed in 0.17s |
+| Python 3.14.7 | `-m pytest -p no:cacheprovider -q` | 316 passed in 0.71s |
+| Python 3.12.14 | `-m pytest -p no:cacheprovider -q` | 316 passed in 0.65s |
+
+The interpreters remain `/tmp/relay-stage1-venv/bin/python` and `/tmp/relay-stage1-py312/bin/python`; Python 3.12 uses PYTHONPATH=/tmp/relay-stage1-venv/lib/python3.14/site-packages for existing pytest. Implementer observed separate RED/GREEN cycles for catalog import, dispatch, configuration support, clock/callbacks, error handling, and validation. Standard-library trace independently passed 87 tests and measured traps.py at 94.9% line coverage (99 executable lines). This is not a branch-coverage claim; no coverage dependency was added.
+
+Safety tests prohibit unlink/remove/rmtree, file writes/traversal/replacement, and process/system calls while fake destructive actions run. Every built-in trap preserves a temporary vault's directory structure and file bytes; config bytes remain unchanged, and fictional output reveals no sentinel filenames/content. Cooldown atomic replacement and failure cleanup are directly observed. All Terminal tests use in-memory streams and injected sleepers; static/non-TTY output has no generated ANSI or real waits. AST checks restrict imports/calls to Stage 5 boundaries.
+
+A wheel was built from a temporary source copy using `pip wheel --no-cache-dir --no-build-isolation --no-deps`, and installed with `pip install --no-cache-dir --no-index --no-deps --force-reinstall` on both Python versions. Audit confirmed exactly nine modules with byte-identical source and unchanged Python >=3.12, cryptography/pytest dependency metadata, and relay entry point. Installed Stage 4/5 boundary checks passed on both versions: unknown-command scramble, false_probe reset and prerequisite re-locking, all five traps, exact UTC cooldown durations, disabled dispatch, inactive real-action settings, and unchanged vault/config bytes. Stage 1–4 installed smoke checks also passed, including both CLI entry points and the 1,125 game command checks across 45 reachable state classes.
+
+Specification review `/root/stage5_spec_review`: PASS, independently reran 87 trap tests. Subsequent code/Python/security review `/root/stage5_code_review`: APPROVE, no findings; independently reran 140 trap/config tests. Git diff whitespace checks and scope audit passed. Stage 5 is complete, with its reviewed local commit recorded in Git history and no push performed. Stage 6 is unblocked, pending, and has not been started or dispatched.
