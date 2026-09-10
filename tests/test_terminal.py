@@ -132,8 +132,8 @@ def test_progress_displays_steps_and_uses_requested_duration():
     terminal.progress("Loading", duration=2, width=2)
 
     assert [delay for delay, _ in observations] == [1, 1]
-    assert observations[0][1].endswith("Loading [--] 0%")
-    assert observations[1][1].endswith("Loading [#-] 50%")
+    assert observations[0][1].endswith("Loading [--] 0%\n")
+    assert observations[1][1].endswith("Loading [#-] 50%\n")
     assert stream.getvalue().endswith("Loading [##] 100%\n")
     assert "\r\x1b[2K" in stream.getvalue()
 
@@ -155,10 +155,13 @@ def test_frames_repaint_multiline_scenes_and_repeat_in_order():
     terminal.animate_frames(iter(["first\nscene", "last"]), frame_delay=0.25, loops=2)
 
     assert [delay for delay, _ in observations] == [0.25, 0.25, 0.25]
-    assert observations[0][1].endswith("first\nscene\n")
-    assert observations[1][1].endswith("last\n")
-    assert observations[2][1].endswith("first\nscene\n")
-    assert stream.getvalue() == ("\x1b[2J\x1b[Hfirst\nscene\n\x1b[2J\x1b[Hlast\n" * 2)
+    assert observations[0][1].endswith("first\n\r\x1b[2Kscene\n")
+    assert observations[1][1].endswith("last\n\r\x1b[2K\n")
+    assert observations[2][1].endswith("first\n\r\x1b[2Kscene\n")
+    assert "\x1b[2J" not in stream.getvalue()
+    assert stream.getvalue().count("first") == 2
+    assert stream.getvalue().count("last") == 2
+    assert stream.getvalue().endswith("last\n\r\x1b[2K\n")
 
 
 @pytest.mark.parametrize("stream_type,effects", [(TTYStream, False), (StringIO, True)])
@@ -217,7 +220,7 @@ def test_scramble_displays_changed_characters_then_restores_text(monkeypatch):
     terminal.scramble_text("AB CD", passes=2)
 
     assert [delay for delay, _ in observations] == [0.05, 0.05]
-    assert all(output.endswith("## ##") for _, output in observations)
+    assert all(output.endswith("## ##\n") for _, output in observations)
     assert stream.getvalue().endswith("AB CD\n")
 
 
@@ -311,3 +314,160 @@ def test_static_session_has_readable_output_without_ansi_or_delays(stream_type, 
     )
     assert "\x1b" not in output
     assert "\r" not in output
+
+
+# V2 effects own their input mode; all clocks below are injected.
+from contextlib import contextmanager
+import os
+
+
+@pytest.mark.parametrize('skip', [False, True])
+def test_animation_skip_consumes_key_restores_mode_and_renders_final(skip):
+    events = []
+    keys = ['x'] if skip else []
+    @contextmanager
+    def keyboard():
+        events.append('enter')
+        def poll():
+            if keys:
+                events.append(keys.pop())
+                return True
+            return False
+        try:
+            yield poll
+        finally:
+            events.append('restore')
+    sleeps = []
+    stream = TTYStream()
+    terminal = Terminal(stream, sleep=sleeps.append, keyboard=keyboard)
+    terminal.progress('verify', .3)
+    assert stream.getvalue().endswith('verify [####################] 100%\n')
+    assert keys == []
+    assert events == (['enter', 'x', 'restore'] if skip else ['enter', 'restore'])
+    assert sum(sleeps) == pytest.approx(0 if skip else .3)
+
+
+def test_fixed_animation_never_reads_input_and_runs_injected_duration():
+    def forbidden():
+        pytest.fail('Fixed animation must not consume input')
+    sleeps = []
+    stream = TTYStream()
+    terminal = Terminal(stream, sleep=sleeps.append, keyboard=forbidden)
+    terminal.progress('bootstrap', 1.2, skippable=False)
+    assert sum(sleeps) == pytest.approx(1.2)
+    assert stream.getvalue().endswith('bootstrap [####################] 100%\n')
+    sleeps.clear()
+    terminal.sequence(['key check       ok', 'manifest        verified', 'session         active'])
+    assert sum(sleeps) == pytest.approx(1.2)
+    assert stream.getvalue().endswith('session         active\x1b[0m\n')
+
+
+@pytest.mark.parametrize('failure', [RuntimeError, KeyboardInterrupt])
+def test_skip_context_restores_on_timing_failure(failure):
+    events = []
+    @contextmanager
+    def keyboard():
+        try:
+            yield lambda: False
+        finally:
+            events.append('restored')
+    def fail(_):
+        raise failure()
+    stream = TTYStream()
+    with pytest.raises(failure):
+        with Terminal(stream, sleep=fail, keyboard=keyboard) as terminal:
+            terminal.progress('mount', .3)
+    assert events == ['restored']
+    assert stream.getvalue().endswith('\x1b[0m\x1b[?25h')
+
+
+@pytest.mark.parametrize('stream_type,effects', [(TTYStream, False), (StringIO, True)])
+def test_static_animation_never_reads_skip_keys(stream_type, effects):
+    def forbidden():
+        pytest.fail('Static animation must not read input')
+    stream = stream_type()
+    terminal = Terminal(stream, effects=effects, sleep=no_sleep, keyboard=forbidden)
+    terminal.progress('sync', .4)
+    terminal.sequence(['verified', 'active'])
+    terminal.print('warning', style='warning')
+    assert stream.getvalue() == 'sync [####################] 100%\nverified\nactive\nwarning\n'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX terminal modes')
+@pytest.mark.parametrize('failure', [None, RuntimeError, KeyboardInterrupt])
+def test_real_pty_input_restored_and_skip_sequence_consumed(failure):
+    import pty
+    import select
+    import termios
+    master, slave = pty.openpty()
+    try:
+        with os.fdopen(os.dup(slave), 'r') as input_stream:
+            previous = termios.tcgetattr(slave)
+            injected = []
+            def tick(_):
+                current = termios.tcgetattr(slave)
+                assert not current[3] & (termios.ICANON | termios.ECHO)
+                assert current[3] & termios.ISIG == previous[3] & termios.ISIG
+                if failure:
+                    raise failure()
+                os.write(master, b'\x1b[A\n')
+                assert select.select([slave], [], [], 1)[0]
+                injected.append(True)
+            terminal = Terminal(TTYStream(), input_stream=input_stream, sleep=tick)
+            if failure:
+                with pytest.raises(failure):
+                    terminal.progress('mount', .3)
+            else:
+                terminal.progress('mount', .3)
+                assert injected == [True, True]
+                assert not select.select([slave], [], [], 0)[0]
+                # A subsequent command contains no escape sequence or newline from skip.
+                os.write(master, b'status\n')
+                assert input_stream.readline() == 'status\n'
+            assert termios.tcgetattr(slave) == previous
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX terminal modes')
+def test_partial_cbreak_setup_failure_restores_original_mode(monkeypatch):
+    import pty
+    import termios
+    import tty
+    master, slave = pty.openpty()
+    try:
+        with os.fdopen(os.dup(slave), 'r') as reader:
+            previous = termios.tcgetattr(slave)
+            original = tty.setcbreak
+            def interrupted(fd, when):
+                original(fd, when)
+                raise KeyboardInterrupt
+            monkeypatch.setattr(tty, 'setcbreak', interrupted)
+            with pytest.raises(KeyboardInterrupt):
+                Terminal(TTYStream(), input_stream=reader, sleep=no_sleep).progress('sync', .3)
+            assert termios.tcgetattr(slave) == previous
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_local_multiline_animation_keeps_prior_history_and_final_frame():
+    stream = TTYStream()
+    terminal = Terminal(stream, input_stream=StringIO(), sleep=lambda _: None)
+    terminal.print('history retained')
+    terminal.animate_frames(['mount\npending', 'active'], .1)
+    output = stream.getvalue()
+    assert output.startswith('history retained\n')
+    assert '\x1b[2J' not in output
+    assert output.endswith('\r\x1b[2Kactive\n\r\x1b[2K\n')
+
+
+def test_narrow_effect_wraps_locally_instead_of_overwriting_history():
+    stream = TTYStream()
+    terminal = Terminal(stream, width=15, input_stream=StringIO(), sleep=lambda _: None)
+    terminal.progress('verify', .3)
+    assert '\x1b[2J' not in stream.getvalue()
+    assert '\x1b[3A' in stream.getvalue()
+    final = stream.getvalue().rsplit('\x1b[3A', 1)[1]
+    assert final.replace('\r\x1b[2K', '').replace('\n', '') == 'verify [####################] 100%'

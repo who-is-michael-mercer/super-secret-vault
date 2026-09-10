@@ -31,12 +31,12 @@ def forbid_real_processes(monkeypatch):
 def test_fixed_trap_catalog():
     expected = {
         "signal_scramble": [("scramble", None), ("clear", None)],
-        "false_probe": [("fake_corruption", None), ("progress", 1), ("reset_level", None)],
-        "red_purge": [("countdown", 5), ("fake_file_deletion", None),
+        "false_probe": [("fake_corruption", None), ("progress", 0.35), ("reset_level", None)],
+        "red_purge": [("progress", 0.3), ("fake_file_deletion", None),
                       ("fake_purge", None), ("clear", None), ("exit_program", None)],
-        "seal_lockout": [("fake_corruption", None), ("countdown", 10),
+        "seal_lockout": [("fake_corruption", None), ("progress", 0.3),
                          ("cooldown", 10), ("exit_program", None)],
-        "auth_lockout": [("fake_corruption", None), ("countdown", 5),
+        "auth_lockout": [("fake_corruption", None), ("progress", 0.3),
                          ("cooldown", 30), ("exit_program", None)],
     }
     assert set(TRAPS) == set(expected)
@@ -70,27 +70,27 @@ class RecordingTerminal:
 @pytest.mark.parametrize("trap_id, expected, exits", [
     ("signal_scramble", ["scramble", "clear"], False),
     ("false_probe", ["messages", "progress", "reset"], False),
-    ("red_purge", ["countdown", "messages", "messages", "clear"], True),
+    ("red_purge", ["progress", "messages", "messages", "clear"], True),
 ])
 def test_fake_dispatch_order(tmp_path, trap_id, expected, exits):
     terminal = RecordingTerminal()
 
     def reset():
         terminal.calls.append(("reset",))
-        return "mirror_chamber"
+        return "route_table"
 
     result = traps.dispatch_trap(
         trap_id, terminal, AppConfig(), resolve_paths(tmp_path), reset_level=reset,
     )
 
     assert [call[0] for call in terminal.calls] == expected
-    assert result == TrapResult(exits, "mirror_chamber" if trap_id == "false_probe" else None, 0)
+    assert result == TrapResult(exits, "route_table" if trap_id == "false_probe" else None, 0)
     if trap_id == "false_probe":
-        assert terminal.calls[1][2] == 1
+        assert terminal.calls[1][2] == 0.35
     if trap_id == "red_purge":
-        assert terminal.calls[0][1] == 5
-        assert "INDEX_07.SYS" in str(terminal.calls)
-        assert "MIRROR_CACHE.BIN" in str(terminal.calls)
+        assert terminal.calls[0][2] == 0.3
+        assert "scratch_07.idx" in str(terminal.calls)
+        assert "mux_cache.bin" in str(terminal.calls)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -149,10 +149,10 @@ def test_configuration_round_trip_and_trap_gates(tmp_path, settings, monkeypatch
     assert actions == (["shutdown"] if settings.get("real_os_actions", {}).get("enabled") else [])
 
 
-@pytest.mark.parametrize("trap_id, countdown, duration", [
-    ("seal_lockout", 10, 10), ("auth_lockout", 5, 30),
+@pytest.mark.parametrize("trap_id, duration", [
+    ("seal_lockout", 10), ("auth_lockout", 30),
 ])
-def test_cooldown_persisted_and_ordered(tmp_path, monkeypatch, trap_id, countdown, duration):
+def test_cooldown_persisted_and_ordered(tmp_path, monkeypatch, trap_id, duration):
     paths = resolve_paths(tmp_path)
     paths.state_path.write_text('{"schema_version": 1, "cooldown_until": null}')
     original = paths.state_path.read_bytes()
@@ -175,8 +175,9 @@ def test_cooldown_persisted_and_ordered(tmp_path, monkeypatch, trap_id, countdow
     result = traps.dispatch_trap(trap_id, terminal, AppConfig(), paths, now=lambda: instant)
 
     assert result == TrapResult(True, None, duration)
-    assert [call[0] for call in terminal.calls] == ["messages", "countdown", "save"]
-    assert terminal.calls[1][1] == countdown
+    assert [call[0] for call in terminal.calls] == ["messages", "progress", "save", "messages"]
+    assert terminal.calls[1][2] == 0.3
+    assert terminal.calls[-1] == ("messages", (f"relay0: backoff {duration}s",))
     saved = json.loads(paths.state_path.read_text())
     assert datetime.fromisoformat(saved["cooldown_until"]) - instant == timedelta(seconds=duration)
     assert saved["schema_version"] == 1
@@ -184,8 +185,8 @@ def test_cooldown_persisted_and_ordered(tmp_path, monkeypatch, trap_id, countdow
 
 
 @pytest.mark.parametrize("kind, callback_name, expected_level", [
-    ("reset_level", "reset_level", "mirror_chamber"),
-    ("move_backward", "move_backward", "archive_junction"),
+    ("reset_level", "reset_level", "route_table"),
+    ("move_backward", "move_backward", "archive_bus"),
     ("lock_vault", "lock_vault", None),
     ("fake_shutdown", None, None),
 ])
@@ -207,7 +208,7 @@ def test_optional_game_actions_and_fake_shutdown(tmp_path, monkeypatch, kind, ca
     assert calls == ([callback_name] if provided and callback_name else [])
     assert result == TrapResult(new_level=expected_level if provided else None)
     if kind == "fake_shutdown":
-        assert "SHUTDOWN" in str(terminal.calls)
+        assert "shutdown simulation" in str(terminal.calls)
     else:
         assert terminal.calls == []
     assert list(tmp_path.iterdir()) == []
@@ -403,14 +404,16 @@ def test_stage4_unknown_trap_and_reset_callback_integration(tmp_path):
     assert request.trap_id == "signal_scramble"
     assert traps.dispatch_trap(request.trap_id, terminal, AppConfig(), resolve_paths(tmp_path)) == TrapResult()
     assert engine.state.consecutive_unknown_commands == 0
-    engine.handle(parse_command("wake"))
+    engine.handle(parse_command("connect bus"))
+    engine.handle(parse_command("scan"))
+    engine.handle(parse_command("route -n"))
     engine.handle(parse_command("probe 13"))
     request = engine.handle(parse_command("probe 03"))
     traps.dispatch_trap(
         request.trap_id, terminal, AppConfig(), resolve_paths(tmp_path), reset_level=engine.reset_current_level,
     )
-    assert engine.state.current_level == "mirror_chamber"
-    assert "null_echo_found" not in engine.state.flags
+    assert engine.state.current_level == "route_table"
+    assert "route_verified" not in engine.state.flags
     assert list(tmp_path.iterdir()) == []
 
 
@@ -421,11 +424,11 @@ def test_ordered_callbacks_and_exit_are_returned_without_terminating(tmp_path, m
 
     def reset():
         terminal.calls.append(("reset",))
-        return "sealed_archive"
+        return "seal_controller"
 
     def back():
         terminal.calls.append(("back",))
-        return "archive_junction"
+        return "archive_bus"
 
     def lock():
         terminal.calls.append(("lock",))
@@ -433,7 +436,7 @@ def test_ordered_callbacks_and_exit_are_returned_without_terminating(tmp_path, m
     result = traps.dispatch_trap(
         "custom", terminal, AppConfig(), resolve_paths(tmp_path), reset_level=reset, move_backward=back, lock_vault=lock,
     )
-    assert result == TrapResult(True, "archive_junction", 0)
+    assert result == TrapResult(True, "archive_bus", 0)
     assert [call[0] for call in terminal.calls] == ["reset", "back", "lock", "clear"]
 
 
@@ -540,7 +543,7 @@ def test_unsupported_binding_is_controlled_after_fake_actions(tmp_path, monkeypa
     monkeypatch.setattr(os_actions, "perform_os_action", forbidden)
     with pytest.raises(os_actions.UnsupportedActionError):
         traps.dispatch_trap("red_purge", terminal, config, resolve_paths(tmp_path))
-    assert [call[0] for call in terminal.calls] == ["countdown", "messages", "messages", "clear"]
+    assert [call[0] for call in terminal.calls] == ["progress", "messages", "messages", "clear"]
 
 
 @pytest.mark.parametrize("error_name", ["UnsupportedActionError", "ActionNotAllowedError"])
@@ -554,7 +557,7 @@ def test_real_action_errors_remain_controlled_and_follow_cooldown(tmp_path, monk
     def fail(action):
         calls.append(action)
         assert paths.state_path.exists()
-        assert [call[0] for call in terminal.calls] == ["messages", "countdown"]
+        assert [call[0] for call in terminal.calls] == ["messages", "progress", "messages"]
         raise failure
 
     monkeypatch.setattr(os_actions, "perform_os_action", fail)
@@ -613,5 +616,5 @@ def test_shell_looking_input_and_game_trap_ids_cannot_bypass_gates(tmp_path, mon
     assert traps.dispatch_trap(
         request.trap_id, RecordingTerminal(), AppConfig(), resolve_paths(tmp_path),
     ) == TrapResult()
-    assert engine.state.current_level == "dormant_relay"
+    assert engine.state.current_level == "relay_root"
     assert list(tmp_path.iterdir()) == []

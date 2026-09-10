@@ -1,4 +1,4 @@
-"""In-memory puzzle progression; effects and authentication belong to the caller."""
+"""In-memory relay navigation; effects and authentication belong to the caller."""
 
 from dataclasses import dataclass, field
 
@@ -8,7 +8,7 @@ from .parser import ParsedCommand
 
 @dataclass
 class GameState:
-    current_level: str = "dormant_relay"
+    current_level: str = "relay_root"
     flags: set[str] = field(default_factory=set)
     consecutive_unknown_commands: int = 0
 
@@ -42,8 +42,7 @@ class GameEngine:
     def available_commands(self) -> tuple[str, ...]:
         level = self.current_level()
         commands = list(level.visible_commands)
-        # Only the flag-gated clues explicitly reveal a hidden command.
-        # Requirement-free wake and the wrong-unlock fallback stay hidden.
+        # Discovery reveals vocabulary without adding route arguments to help.
         for rule in level.rules:
             if (rule.hidden and rule.requires_flags
                     and rule.requires_flags <= self.state.flags
@@ -52,7 +51,7 @@ class GameEngine:
         return tuple(commands)
 
     def transition(self, level_id: str) -> GameResult:
-        """Keep discoveries on navigation; the gate is a signal, not a sixth level."""
+        """Keep discoveries on navigation; the gate is a signal outside the environment table."""
         if level_id == "authentication_gate":
             return GameResult(transition_to=level_id, authentication_gate=True)
         if level_id not in LEVELS:
@@ -68,6 +67,9 @@ class GameEngine:
         if parsed_command.name == "help" and not parsed_command.args:
             self.state.consecutive_unknown_commands = 0
             return GameResult(message="\n".join(self.available_commands()))
+        if parsed_command.name == "pwd" and not parsed_command.args:
+            self.state.consecutive_unknown_commands = 0
+            return GameResult(message=self.current_level().prompt.split(":", 1)[1][:-1])
         if parsed_command.name == "clear" and not parsed_command.args:
             self.state.consecutive_unknown_commands = 0
             return GameResult(clear=True)
@@ -79,7 +81,10 @@ class GameEngine:
                     and (rule.args == parsed_command.args
                          or (rule.args is None and parsed_command.args))):
                 if not rule.requires_flags <= self.state.flags:
-                    # A blocked exact rule must not fall through to a trap.
+                    # Inspection can fall back to its undiscovered state.
+                    if rule.command == "status":
+                        continue
+                    # A blocked action must not fall through to a trap.
                     break
                 self.state.consecutive_unknown_commands = 0
                 self.state.flags.update(rule.sets_flags)
@@ -88,11 +93,11 @@ class GameEngine:
                 return GameResult(message=rule.message, trap_id=rule.trap_id)
         self.state.consecutive_unknown_commands += 1
         trap_id = None
-        if (self.state.current_level == "dormant_relay"
+        if (self.state.current_level == "relay_root"
                 and self.state.consecutive_unknown_commands >= 3):
             trap_id = "signal_scramble"
             self.state.consecutive_unknown_commands = 0
-        return GameResult(message="Unknown command.", trap_id=trap_id, unknown=True)
+        return GameResult(message="command: unavailable", trap_id=trap_id, unknown=True)
 
     def move_back(self) -> GameResult:
         target = self.current_level().back_target

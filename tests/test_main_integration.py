@@ -27,8 +27,9 @@ def test_uninitialized_startup_never_prompts(tmp_path, monkeypatch):
     assert not (tmp_path / 'absent').exists()
 
 
-ROUTE = ['status', 'wake', 'scan', 'probe 13', 'enter null', 'inspect',
-         'open black', 'inspect', 'read seal', 'unlock mirror']
+ROUTE = ['connect bus', 'scan', 'route -n', 'probe 13', 'connect 13',
+         'mount archive0', 'mount black', 'cat controller', 'connect sealctl',
+         'sealctl status', 'sealctl unlock']
 
 
 @pytest.fixture(scope='module')
@@ -95,12 +96,12 @@ def test_correct_route_unlocks_and_exits(vault):
     result, output, visits = drive(ROUTE + ['exit'], [password])
     assert result == 0
     assert len(visits) == 1
-    assert 'seal://mirror>' in visits[0]
-    assert 'IDENTITY MATERIAL REQUIRED' in visits[0]
-    assert 'core://open>' not in visits[0]
-    assert 'core://open>' in output
-    assert 'CARRIER: ASLEEP' in output
-    assert 'SOCKETS: 03 08 13' in output
+    assert 'sealctl:/control>' in visits[0]
+    assert 'auth: identity material required' in visits[0]
+    assert 'vault0:/data>' not in visits[0]
+    assert 'vault0:/data>' in output
+    assert 'relay0: carrier detected' in output
+    assert '03  closed' in output
     assert password not in output
 
 
@@ -119,10 +120,10 @@ def test_vault_operations_and_manual_lock(vault, tmp_path):
     assert storage.load_manifest(paths, key, config).entries == []
     assert not list(paths.objects_dir.iterdir())
     assert 'My Notes.txt' in output
-    assert 'Created:' in output and 'Updated:' in output
-    assert 'LINK LOST' in output
-    assert output.count('relay://sleep>') >= 3
-    assert 'wake' not in output.rsplit('LINK LOST', 1)[1]
+    assert 'created:' in output and 'updated:' in output
+    assert 'session: locked' in output
+    assert output.count('relay0:/proc/relay>') >= 3
+    assert 'auth: identity material required' not in output.rsplit('session: locked', 1)[1]
 
 
 @pytest.mark.parametrize('active', [True, False])
@@ -134,11 +135,11 @@ def test_startup_cooldown(vault, active):
     assert result == 0
     assert visits == []
     if active:
-        assert 'CHANNEL UNAVAILABLE' in output
-        assert 'relay://sleep>' not in output
+        assert 'relay0: backoff' in output
+        assert 'relay0:/proc/relay>' not in output
         assert load_runtime_state(paths).cooldown_until == until.isoformat()
     else:
-        assert 'CARRIER: ASLEEP' in output
+        assert 'relay0: carrier detected' in output
         assert load_runtime_state(paths).cooldown_until is None
 
 
@@ -189,8 +190,8 @@ def test_timeout_while_reading_ignores_command_and_resets(vault, sessions, monke
     assert calls == []
     assert sessions[0].is_locked()
     assert sessions[0]._key is None
-    assert 'CONNECTION EXPIRED' in output
-    assert 'relay://sleep>' in output.split('CONNECTION EXPIRED')[1]
+    assert 'session: locked (idle timeout)' in output
+    assert 'relay0:/proc/relay>' in output.split('session: locked (idle timeout)')[1]
     assert paths.manifest_path.read_bytes() == before
 
 
@@ -200,13 +201,13 @@ def vault_snapshot(paths):
 
 
 @pytest.mark.parametrize('commands, clue, exits, cooldown', [
-    (['unknown', 'unknown', 'unknown'], 'RELAY SIGNAL LOST', False, 0),
-    (['wake', 'probe 03'], 'REBUILDING SIGNAL', False, 0),
-    (['wake', 'probe 08'], 'REBUILDING SIGNAL', False, 0),
-    (ROUTE[:5] + ['open white', 'status', 'read index'],
-     'A REAL ARCHIVE WOULD NOT LEAVE THE EXIT OPEN.', False, 0),
-    (ROUTE[:5] + ['open red'], 'PURGE COMPLETE', True, 0),
-    (ROUTE[:7] + ['unlock wrong'], 'CHECKSUM FAILURE', True, 10),
+    (['unknown', 'unknown', 'unknown'], 'relay0: carrier degraded', False, 0),
+    (ROUTE[:3] + ['probe 03'], 'route: recovering', False, 0),
+    (ROUTE[:3] + ['probe 08'], 'route: recovering', False, 0),
+    (ROUTE[:6] + ['mount white', 'status', 'cat index'],
+     'records: 2', False, 0),
+    (ROUTE[:6] + ['mount red', 'mount -o rw red'], 'red: journal detached', True, 0),
+    (ROUTE[:9] + ['sealctl wrong'], 'metadata mismatch', True, 10),
 ])
 def test_wrong_paths_use_fake_traps_without_vault_mutation(vault, commands, clue, exits, cooldown):
     _, key, config, paths = vault
@@ -221,7 +222,7 @@ def test_wrong_paths_use_fake_traps_without_vault_mutation(vault, commands, clue
     assert clue in output
     assert visits == []
     assert vault_snapshot(paths) == before
-    assert ('RELAY DISCONNECTED' not in output) == exits
+    assert ('relay0: disconnected' not in output) == exits
     state = load_runtime_state(paths)
     if cooldown:
         duration = (datetime.fromisoformat(state.cooldown_until) - before_time).total_seconds()
@@ -229,16 +230,16 @@ def test_wrong_paths_use_fake_traps_without_vault_mutation(vault, commands, clue
     else:
         assert state.cooldown_until is None
     for hidden in ['false_probe', 'signal_scramble', 'seal_lockout', 'red_purge',
-                   manifest.entries[0].id, 'null_echo_found', 'seal_read']:
+                   manifest.entries[0].id, 'route_verified', 'seal_ready']:
         assert hidden not in output
 
 
 def test_probe_trap_clears_discovery(vault):
-    commands = ['wake', 'probe 13', 'probe 03', 'enter null', 'help']
+    commands = ROUTE[:4] + ['probe 03', 'connect 13', 'help']
     _, output, visits = drive(commands)
     assert visits == []
-    assert 'archive://junction>' not in output
-    assert 'Unknown command.' in output
+    assert 'archive0:/mnt>' not in output
+    assert 'command: unavailable' in output
 
 
 def test_one_bad_password_then_success_and_visit_counter_reset(vault, sessions):
@@ -247,7 +248,7 @@ def test_one_bad_password_then_success_and_visit_counter_reset(vault, sessions):
                                   ['bad', 'bad', password, 'bad', 'bad', password])
     assert result == 0
     assert len(visits) == 6
-    assert output.count('IDENTITY REJECTED') == 4
+    assert output.count('auth: key check failed') == 4
     assert len(sessions) == 2
     assert all(session.is_locked() for session in sessions)
     assert load_runtime_state(paths).cooldown_until is None
@@ -259,14 +260,14 @@ def test_three_bad_passwords_persist_lockout_and_exit(vault):
     result, output, visits = drive(ROUTE + ['list'], ['bad', 'bad', 'bad'])
     assert result == 1
     assert len(visits) == 3
-    assert output.count('IDENTITY REJECTED') == 3
-    assert 'core://open>' not in output
+    assert output.count('auth: key check failed') == 3
+    assert 'vault0:/data>' not in output
     until = datetime.fromisoformat(load_runtime_state(paths).cooldown_until)
     assert 30 <= (until - now).total_seconds() < 33
-    assert 'INDEX_07.SYS: CHECKSUM FAILURE' in output
+    assert 'archive0: metadata mismatch' in output
     result, output, _ = drive(ROUTE)
-    assert result == 0 and 'CHANNEL UNAVAILABLE' in output
-    assert 'relay://sleep>' not in output
+    assert result == 0 and 'relay0: backoff' in output
+    assert 'relay0:/proc/relay>' not in output
 
 
 def test_disabled_auth_trap_does_not_allow_fourth_password(vault):
@@ -276,7 +277,7 @@ def test_disabled_auth_trap_does_not_allow_fourth_password(vault):
     result, output, visits = drive(ROUTE, ['bad', 'bad', 'bad'])
     assert result == 1
     assert len(visits) == 3
-    assert 'CHECKSUM FAILURE' not in output
+    assert 'metadata mismatch' not in output
     assert load_runtime_state(paths).cooldown_until is None
 
 
@@ -292,8 +293,8 @@ def test_corrupt_manifest_is_not_wrong_password(vault, sessions, damage):
     paths.manifest_path.write_bytes(blob)
     result, output, visits = drive(ROUTE, [password])
     assert result == 1 and len(visits) == 1
-    assert 'IDENTITY REJECTED' not in output
-    assert 'core://open>' not in output
+    assert 'auth: key check failed' not in output
+    assert 'vault0:/data>' not in output
     assert 'Traceback' not in output
     assert sessions == []
     assert password not in output
@@ -309,8 +310,8 @@ def test_argument_errors_keep_vault_usable_without_mutation(vault, sessions, com
     before = vault_snapshot(paths)
     result, output, _ = drive(ROUTE + [command, 'list', 'exit'], [password])
     assert result == 0
-    assert 'Usage:' in output
-    assert 'PROTECTED INDEX EMPTY.' in output
+    assert 'usage:' in output
+    assert 'index: empty' in output
     assert vault_snapshot(paths) == before
 
 
@@ -328,7 +329,7 @@ def test_remove_requires_explicit_confirmation(vault, answer, removed):
     assert "remove 'source.txt'? [y/N]" in output
     assert bool(storage.load_manifest(paths, key, config).entries) != removed
     if not removed:
-        assert 'Removal canceled.' in output
+        assert 'remove: canceled' in output
         assert vault_snapshot(paths) == before
 
 
@@ -347,9 +348,9 @@ def test_timeout_during_remove_confirmation_preserves_file(vault, sessions):
                               [password], input_hook=expire)
     assert result == 0
     assert vault_snapshot(paths) == before
-    assert 'FILE REMOVED' not in output
-    assert 'CONNECTION EXPIRED' in output
-    assert 'CARRIER: ASLEEP' in output.rsplit('CONNECTION EXPIRED', 1)[1]
+    assert 'remove: complete' not in output
+    assert 'session: locked (idle timeout)' in output
+    assert 'relay0: carrier detected' in output.rsplit('session: locked (idle timeout)', 1)[1]
 
 
 @pytest.mark.parametrize('stage', ['game', 'password', 'vault', 'confirmation'])
@@ -387,7 +388,7 @@ def test_unexpected_error_locks_session_and_hides_details(vault, sessions, monke
     monkeypatch.setattr(VaultSession, 'list_files', fail)
     result, output, _ = drive(ROUTE + ['list'], [password])
     assert result == 1
-    assert 'RELAY FAILURE' in output
+    assert 'relay0: failure' in output
     assert 'DO-NOT-LEAK' not in output and 'Traceback' not in output
     assert sessions[0].is_locked()
     assert sessions[0]._thread is None
@@ -420,7 +421,7 @@ def test_operation_errors_use_safe_messages_and_cleanup(vault, sessions, monkeyp
     assert 'internal object id' not in output
     assert 'Traceback' not in output
     if kind == 'locked':
-        assert 'CONNECTION EXPIRED' in output
+        assert 'session: locked (idle timeout)' in output
     elif kind in {'storage', 'io'}:
         assert 'show file metadata' in output
     assert sessions[0].is_locked()
@@ -434,8 +435,8 @@ def test_shell_looking_input_and_bad_quotes_are_inert(vault):
         '$(reboot)', 'open "red; reboot"', 'help', 'clear', 'exit']
     result, output, _ = drive(commands, [password])
     assert result == 0
-    assert output.count('Unreadable command') == 2
-    assert 'Unknown command' in output
+    assert output.count('command: invalid quoting') == 2
+    assert 'command: unavailable' in output
     assert vault_snapshot(paths) == before
     assert '\x1b' not in output
     assert password not in output
@@ -476,9 +477,9 @@ def test_shared_entrypoint_starts_game_without_authentication(vault, monkeypatch
     else:
         assert app.main([]) == 0
     output = capsys.readouterr().out
-    assert 'relay://sleep>' in output
-    assert 'vault' not in output.lower()
-    assert 'IDENTITY MATERIAL' not in output
+    assert 'relay0:/proc/relay>' in output
+    assert 'vault      :: initialized' in output
+    assert 'auth: identity material required' not in output
 
 
 def test_manual_lock_resets_all_progress_before_next_input(vault, sessions, monkeypatch):
@@ -493,14 +494,14 @@ def test_manual_lock_resets_all_progress_before_next_input(vault, sessions, monk
     def inspect(command):
         if command == 'help':
             assert sessions[0].is_locked()
-            assert games[0].state.current_level == 'dormant_relay'
+            assert games[0].state.current_level == 'relay_root'
             assert games[0].state.flags == set()
             assert games[0].state.consecutive_unknown_commands == 0
-    result, output, visits = drive(ROUTE + ['lock', 'help', 'unlock mirror'],
+    result, output, visits = drive(ROUTE + ['lock', 'help', 'sealctl unlock'],
                                    [password], input_hook=inspect)
     assert result == 0
     assert len(visits) == 1
-    assert 'Unknown command.' in output.rsplit('LINK LOST', 1)[1]
+    assert 'command: unavailable' in output.rsplit('session: locked', 1)[1]
 
 
 def test_already_timed_out_session_does_not_prompt_in_vault(vault, sessions, monkeypatch):
@@ -511,8 +512,8 @@ def test_already_timed_out_session_does_not_prompt_in_vault(vault, sessions, mon
     monkeypatch.setattr(VaultSession, 'start_auto_lock', expired)
     result, output, _ = drive(ROUTE + ['status'], [password])
     assert result == 0
-    assert 'core://open>' not in output
-    assert 'CARRIER: ASLEEP' in output.rsplit('CONNECTION EXPIRED', 1)[1]
+    assert 'vault0:/data>' not in output
+    assert 'relay0: carrier detected' in output.rsplit('session: locked (idle timeout)', 1)[1]
 
 
 def test_trap_movement_callbacks_and_returned_level_use_game_api(vault, monkeypatch):
@@ -524,17 +525,17 @@ def test_trap_movement_callbacks_and_returned_level_use_game_api(vault, monkeypa
     def dispatch(trap_id, terminal, config, paths, **callbacks):
         assert trap_id == 'false_probe'
         callbacks['reset_level']()
-        assert 'null_echo_found' not in game.state.flags
+        assert 'route_verified' not in game.state.flags
         callbacks['move_backward']()
-        assert game.state.current_level == 'dormant_relay'
+        assert game.state.current_level == 'device_bus'
         events.append(trap_id)
-        return TrapResult(new_level='archive_junction')
+        return TrapResult(new_level='archive_bus')
     monkeypatch.setattr(app, 'dispatch_trap', dispatch)
-    result, output, _ = drive(['wake', 'probe 13', 'probe 03', 'inspect'])
+    result, output, _ = drive(ROUTE[:4] + ['probe 03', 'status'])
     assert result == 0
     assert events == ['false_probe']
-    assert 'archive://junction>' in output
-    assert 'WHITE ARCHIVE' in output
+    assert 'archive0:/mnt>' in output
+    assert 'white  ro  clean' in output
 
 
 def test_explicit_os_binding_still_uses_traps_after_fake_effects(vault, monkeypatch):
@@ -551,7 +552,7 @@ def test_explicit_os_binding_still_uses_traps_after_fake_effects(vault, monkeypa
                          terminal=Terminal(output, effects=False))
     assert result == 0
     assert len(calls) == 1 and calls[0][0] == 'shutdown'
-    assert 'RELAY SIGNAL LOST' in calls[0][1]
+    assert 'relay0: carrier degraded' in calls[0][1]
 
 
 def test_game_clear_and_non_tty_effects_remain_static(vault, monkeypatch):
@@ -566,7 +567,7 @@ def test_game_clear_and_non_tty_effects_remain_static(vault, monkeypatch):
     result, output, _ = drive(['clear', 'status'], terminal=terminal)
     assert result == 0
     assert cleared == [True]
-    assert 'CARRIER: ASLEEP' in output
+    assert 'relay0: carrier detected' in output
     assert '\x1b' not in output
 
 
@@ -607,3 +608,62 @@ def test_untrusted_names_cannot_emit_terminal_controls(vault):
     assert '\nforged.txt' not in output
     assert '\\x1b' in output and '\\nforged.txt' in output
     assert storage.load_manifest(paths, key, config).entries[0].name == name
+
+
+def test_v2_dashboard_history_and_success_sequence_before_vault(vault):
+    password, _, _, _ = vault
+    class TTY(io.StringIO):
+        def isatty(self):
+            return True
+    terminal = Terminal(TTY(), effects=True, sleep=lambda _: None, input_stream=io.StringIO())
+    result, output, visits = drive(ROUTE + ['list', 'exit'], [password], terminal=terminal)
+    assert result == 0
+    assert output.index('interlock') < output.index('relay0:/proc/relay>')
+    assert output.index('vault      :: initialized') < output.index('auth: identity material required')
+    assert 'session         active' not in visits[0]
+    assert output.index('key check       ok') < output.index('manifest        verified')
+    assert output.index('manifest        verified') < output.index('archive         decrypted')
+    assert output.index('session         active') < output.index('vault0:/data>')
+    assert '\x1b[2J' not in output
+
+
+@pytest.mark.parametrize('failure', [KeyboardInterrupt, RuntimeError])
+def test_authentication_animation_failure_clears_owned_session(vault, sessions, failure):
+    password, _, _, _ = vault
+    terminal = Terminal(io.StringIO(), effects=False)
+    def fail(*args):
+        raise failure()
+    terminal.sequence = fail
+    result, output, _ = drive(ROUTE, [password], terminal=terminal)
+    assert result == (0 if failure is KeyboardInterrupt else 1)
+    assert len(sessions) == 1
+    assert sessions[0].is_locked()
+    assert sessions[0]._key is None and sessions[0]._manifest is None
+    assert sessions[0]._thread is None
+    assert 'vault0:/data>' not in output
+
+
+def test_v2_red_readonly_inspection_and_backtracking(vault):
+    result, output, visits = drive(ROUTE[:6] + ['mount red', 'status', 'cat journal',
+        'probe journal', 'umount red', 'mount white', 'cat index', 'umount white',
+        'back', 'status'])
+    assert result == 0 and not visits
+    assert 'red: journal unstable' in output
+    assert 'mount: remounted ro' in output
+    assert 'records: 2' in output
+    assert output.count('archive0:/mnt>') == 3
+    assert 'route13:/link/null>' in output
+
+
+def test_dashboard_with_real_encrypted_object_stays_public(vault):
+    password, key, config, paths = vault
+    source = paths.home.parent / 'PRIVATE-FILENAME.txt'
+    source.write_bytes(b'PRIVATE-CONTENT')
+    manifest = storage.load_manifest(paths, key, config)
+    entry = storage.store_file(paths, key, config, manifest, source)
+    result, output, visits = drive(['status'])
+    assert result == 0 and not visits
+    assert 'objects    :: 01' in output
+    assert 'session    :: locked' in output
+    for secret in (source.name, 'PRIVATE-CONTENT', password, entry.id, str(paths.home)):
+        assert secret not in output

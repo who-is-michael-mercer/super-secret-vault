@@ -15,6 +15,7 @@ from vaultgame.config import (AppConfig, ConfigError, RuntimeState, resolve_path
                               ensure_runtime_directories, is_initialized, load_config,
                               load_runtime_state,
                               save_config_atomic, save_runtime_state_atomic)
+from vaultgame.dashboard import render_dashboard
 from vaultgame.game import GameEngine
 from vaultgame.parser import CommandParseError, parse_command
 from vaultgame.terminal import Terminal
@@ -116,16 +117,19 @@ def run_application(*, terminal=None, input_fn=None, password_fn=None):
     """Run one relay process; injected readers use the usual input/getpass API."""
     terminal = terminal if terminal is not None else Terminal()
     input_fn = input if input_fn is None else input_fn
-    password_fn = getpass.getpass if password_fn is None else password_fn
+    password_fn = (lambda: getpass.getpass("")) if password_fn is None else password_fn
     session = None
     try:
         with terminal:
             try:
                 paths = resolve_paths()
-                if not is_initialized(paths):
-                    terminal.print("Setup required. Run relay init.")
+                initialized = is_initialized(paths)
+                config = load_config(paths) if initialized else None
+                terminal.progress("relay0: bootstrap", 1.2, skippable=False)
+                render_dashboard(terminal, paths, config, now=datetime.now(timezone.utc))
+                if not initialized:
+                    terminal.print("relay0: setup required; run relay init", style="warning")
                     return 0
-                config = load_config(paths)
                 if handle_cooldown(paths, terminal):
                     return 0
                 game = GameEngine()
@@ -134,28 +138,31 @@ def run_application(*, terminal=None, input_fn=None, password_fn=None):
                     if session is None:
                         return 1
                     session.start_auto_lock()
+                    if not session.is_locked():
+                        terminal.sequence(("key check       ok", "manifest        verified",
+                                           "archive         decrypted", "session         active"))
                     outcome = run_vault_loop(session, terminal, input_fn)
                     session.lock()
                     session = None
                     if outcome == "exit":
                         return 0
                     terminal.clear()
-                    terminal.type_text("CONNECTION EXPIRED. RETURNING TO RELAY."
-                                       if outcome == "timeout" else
-                                       "LINK LOST. RETURNING TO RELAY.")
+                    terminal.print("session: locked (idle timeout)" if outcome == "timeout"
+                                   else "session: locked", style="muted")
+                    terminal.print("relay0: route reset")
                     game.reset_game()
                 return 0
             finally:
                 if session is not None:
                     session.lock()
     except (EOFError, KeyboardInterrupt):
-        terminal.print("\nRELAY DISCONNECTED.")
+        terminal.print("\nrelay0: disconnected")
         return 0
     except (crypto.IntegrityError, crypto.VaultFormatError):
-        terminal.print("Protected archive integrity check failed. Connection closed.")
+        terminal.print("archive0: integrity check failed; disconnected")
         return 1
     except Exception:
-        terminal.print("RELAY FAILURE. CONNECTION CLOSED.")
+        terminal.print("relay0: failure; disconnected")
         return 1
 
 
@@ -168,8 +175,7 @@ def handle_cooldown(paths, terminal):
     remaining = (until - datetime.now(timezone.utc)).total_seconds()
     if remaining > 0:
         seconds = math.ceil(remaining)
-        terminal.print(f"CHANNEL UNAVAILABLE. RETRY IN {seconds} SECONDS.")
-        terminal.countdown(seconds, prefix="CHANNEL HOLD: ")
+        terminal.print(f"relay0: backoff {seconds}s", style="warning")
         return True
     save_runtime_state_atomic(paths, replace(state, cooldown_until=None))
     return False
@@ -183,7 +189,7 @@ def run_game_loop(game, terminal, config, paths, input_fn):
         try:
             command = parse_command(line)
         except CommandParseError:
-            terminal.print("Unreadable command. Check quotation marks.")
+            terminal.print("command: invalid quoting")
             continue
         result = game.handle(command)
         if result.message:
@@ -204,22 +210,22 @@ def run_game_loop(game, terminal, config, paths, input_fn):
                 game.transition(trap.new_level)
             game.render_intro(terminal)
         elif result.transition_to:
-            terminal.clear()
+            terminal.progress("route: synchronizing", 0.3)
             game.render_intro(terminal)
 
 
 def run_authentication_gate(terminal, config, paths, password_fn):
-    terminal.clear()
-    terminal.progress("SYNCHRONIZING SEALED CHANNEL", 1)
-    terminal.type_text("IDENTITY MATERIAL REQUIRED")
+    terminal.print("archive0: sealed channel", style="accent")
+    terminal.print("keyring: external\nauth: identity material required\n")
     for _ in range(3):
-        password = _read_input(terminal, password_fn, "Identity: ")
+        password = _read_input(terminal, password_fn, "password:")
         try:
             return VaultSession.authenticate(password, config, paths)
         except AuthenticationError:
-            terminal.scramble_text("IDENTITY REJECTED")
+            terminal.print("auth: key check failed", style="error")
         finally:
             del password
+    terminal.print("auth: retry limit exceeded", style="error")
     dispatch_trap("auth_lockout", terminal, config, paths)
     return None
 
@@ -240,7 +246,7 @@ def run_vault_loop(session, terminal, input_fn):
     while True:
         if session.is_locked() or session.timed_out.is_set():
             return "timeout"
-        line = _read_input(terminal, input_fn, "core://open>")
+        line = _read_input(terminal, input_fn, "vault0:/data>")
         if session.is_locked() or session.timed_out.is_set():
             return "timeout"
         try:
@@ -250,13 +256,13 @@ def run_vault_loop(session, terminal, input_fn):
             if outcome is not None:
                 return outcome
         except CommandParseError:
-            terminal.print("Unreadable command. Check quotation marks.")
+            terminal.print("command: invalid quoting")
         except VaultLockedError:
             return "timeout"
         except storage.StorageError:
-            terminal.print("File operation refused. Check the name, paths, and destination.")
+            terminal.print("file: operation refused; check name, paths, destination")
         except OSError:
-            terminal.print("File operation failed. Check file access and available space.")
+            terminal.print("file: I/O failed; check access and space")
 
 
 def _display_text(text):
@@ -278,10 +284,10 @@ def handle_vault_command(command, session, terminal, input_fn):
     elif name in {"remove", "info"}:
         valid = len(args) == 1
     else:
-        terminal.print("Unknown command. Use help.")
+        terminal.print("command: unavailable")
         return None
     if not valid:
-        terminal.print("Usage: " + next(line.strip() for line in VAULT_HELP.splitlines()
+        terminal.print("usage: " + next(line.strip() for line in VAULT_HELP.splitlines()
                                       if line.startswith(name + " ")))
         return None
     if name in {"lock", "exit"}:
@@ -293,30 +299,33 @@ def handle_vault_command(command, session, terminal, input_fn):
     elif name == "list":
         entries = session.list_files()
         if not entries:
-            terminal.print("PROTECTED INDEX EMPTY.")
+            terminal.print("index: empty")
         for entry in entries:
             terminal.print(f"{_display_text(entry.name)} — {entry.size} bytes")
     elif name == "store":
         session.store(*args)
-        terminal.print("FILE PROTECTED.")
+        terminal.progress("encrypt", 0.3)
+        terminal.print("verify     ok\nstore: complete")
     elif name == "retrieve":
         session.retrieve(*args)
-        terminal.print(f"FILE RETRIEVED TO: {_display_text(args[1])}")
+        terminal.print("verify     ok")
+        terminal.progress("decrypt", 0.3)
+        terminal.print(f"write      {_display_text(args[1])}\nretrieve: complete")
     elif name == "remove":
         answer = _read_input(terminal, input_fn, f"remove '{_display_text(args[0])}'? [y/N]")
         if session.is_locked() or session.timed_out.is_set():
             return "timeout"
         session.touch_activity()
         if answer.lower() not in {"y", "yes"}:
-            terminal.print("Removal canceled.")
+            terminal.print("remove: canceled")
         else:
             session.remove(args[0])
-            terminal.print("FILE REMOVED.")
+            terminal.print("remove: complete")
     elif name == "rename":
         session.rename(*args)
-        terminal.print("FILE RENAMED.")
+        terminal.print("rename: complete")
     elif name == "info":
         info = session.info(args[0])
-        terminal.print(f"Name: {_display_text(info['name'])}\nSize: {info['size']} bytes\n"
-                       f"Created: {info['created_at']}\nUpdated: {info['updated_at']}")
+        terminal.print(f"name: {_display_text(info['name'])}\nsize: {info['size']} bytes\n"
+                       f"created: {info['created_at']}\nupdated: {info['updated_at']}")
     return None

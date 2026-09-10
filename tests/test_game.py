@@ -1,4 +1,4 @@
-"""Exercise fixed game routes using the real internal parser."""
+"""In-memory V2 navigation and unchanged parser/execution boundaries."""
 
 import ast
 import io
@@ -12,324 +12,206 @@ from vaultgame.parser import parse_command
 from vaultgame.terminal import Terminal
 
 
+# Eleven short commands: a learned route fits ordinary 20–40s typing.
+ROUTE = ['connect bus', 'scan', 'route -n', 'probe 13', 'connect 13',
+         'mount archive0', 'mount black', 'cat controller', 'connect sealctl',
+         'sealctl status', 'sealctl unlock']
+
+
 def command(engine, line):
     return engine.handle(parse_command(line))
 
 
-def test_exact_successful_route():
+def test_exact_successful_route_and_concise_learned_path():
     engine = GameEngine()
-    assert engine.current_level().id == "dormant_relay"
-    assert engine.state.flags == set()
-    assert engine.state.consecutive_unknown_commands == 0
-    assert command(engine, "status").message == "CARRIER: ASLEEP\nHANDSHAKE: WAKE SEQUENCE ABSENT"
-    assert command(engine, "wake").transition_to == "mirror_chamber"
-    assert engine.current_level().id == "mirror_chamber"
-    assert command(engine, "scan").message == "SOCKETS: 03 08 13\nRESPONSE RULE: LARGEST PRIME\nECHO TYPE: NULL"
-    assert command(engine, "probe 13").message == "ENTRY CHANNEL ACCEPTS: ENTER NULL"
-    assert engine.state.flags == {"null_echo_found"}
-    assert command(engine, "enter null").transition_to == "archive_junction"
-    assert engine.current_level().id == "archive_junction"
-    assert command(engine, "inspect").message == (
-        "WHITE ARCHIVE\nRED ARCHIVE\nBLACK ARCHIVE\n\n"
-        "ONLY THE CHAMBER THAT RETURNS NO LIGHT\nKEEPS A TRUTHFUL INDEX."
-    )
-    assert command(engine, "open black").transition_to == "sealed_archive"
-    assert engine.current_level().id == "sealed_archive"
-    assert command(engine, "inspect").message == "SEAL: MIRROR\nSTATE: UNREAD"
-    assert command(engine, "read seal").message == "THE MIRROR ACCEPTS ONE VERB:\nUNLOCK"
-    assert engine.state.flags == {"null_echo_found", "seal_read"}
-    result = command(engine, "unlock mirror")
+    visited = [engine.current_level().id]
+    for line in ROUTE:
+        result = command(engine, line)
+        assert not result.unknown and result.trap_id is None
+        if result.transition_to:
+            visited.append(result.transition_to)
+    assert visited == ['relay_root', 'device_bus', 'route_table', 'null_link',
+                       'archive_bus', 'black_archive', 'seal_controller', 'authentication_gate']
     assert result.authentication_gate
-    assert result.transition_to == "authentication_gate"
-    assert result.trap_id is None
-    assert engine.current_level().id == "sealed_archive"
+    assert len(ROUTE) <= 12
+    assert sum(len(line) + 1 for line in ROUTE) <= 160
+    assert engine.current_level().id == 'seal_controller'
 
 
-@pytest.mark.parametrize(
-    "level_id,hidden,discovery,flag",
-    [
-        ("mirror_chamber", "enter", "probe 13", "null_echo_found"),
-        ("sealed_archive", "unlock", "read seal", "seal_read"),
-    ],
-)
-def test_help_reveals_hidden_commands_only_after_discovery(level_id, hidden, discovery, flag):
+@pytest.mark.parametrize('identity,blocked,discovery,flag', [
+    ('device_bus', 'route -n', 'scan', 'bus_scanned'),
+    ('route_table', 'connect 13', 'probe 13', 'route_verified'),
+    ('black_archive', 'connect sealctl', 'cat controller', 'controller_found'),
+    ('seal_controller', 'sealctl unlock', 'sealctl status', 'seal_ready'),
+])
+def test_state_gates_cannot_fall_through_to_traps(identity, blocked, discovery, flag):
     engine = GameEngine()
-    engine.transition(level_id)
-    assert engine.available_commands() == engine.current_level().visible_commands
-    assert command(engine, "help").message.splitlines() == list(engine.available_commands())
-    assert hidden not in command(engine, "help").message.splitlines()
+    engine.transition(identity)
+    result = command(engine, blocked)
+    assert result.unknown and result.trap_id is None and not result.authentication_gate
+    assert not result.transition_to
     command(engine, discovery)
     assert flag in engine.state.flags
-    assert engine.available_commands() == (*engine.current_level().visible_commands, hidden)
-    assert command(engine, "help").message.splitlines() == list(engine.available_commands())
+    result = command(engine, blocked)
+    assert result.transition_to and not result.unknown
 
 
-def test_unknown_counter_and_signal_scramble_threshold():
+def test_help_reveals_vocabulary_only_and_hidden_connect_requires_discovery():
     engine = GameEngine()
-    for count in (1, 2):
-        result = command(engine, "nonsense")
-        assert result.unknown
-        assert result.trap_id is None
-        assert engine.state.consecutive_unknown_commands == count
-    result = command(engine, "nonsense")
-    assert result.unknown
-    assert result.trap_id == "signal_scramble"
-    assert engine.state.consecutive_unknown_commands == 0
-    assert engine.current_level().id == "dormant_relay"
-    assert engine.state.flags == set()
-    command(engine, "nonsense")
-    assert engine.state.consecutive_unknown_commands == 1
-    assert not command(engine, "status").unknown
-    assert engine.state.consecutive_unknown_commands == 0
+    engine.transition('route_table')
+    assert 'connect' not in engine.available_commands()
+    assert '13' not in command(engine, 'help').message
+    command(engine, 'probe 13')
+    assert 'connect' in engine.available_commands()
+    assert 'connect 13' not in command(engine, 'help').message
 
 
-@pytest.mark.parametrize("level_id,target", [
-    ("mirror_chamber", "dormant_relay"),
-    ("archive_junction", "mirror_chamber"),
-    ("decoy_archive", "archive_junction"),
-    ("sealed_archive", "archive_junction"),
-])
-def test_back_navigation_preserves_flags(level_id, target):
+@pytest.mark.parametrize('identity', levels.LEVELS)
+def test_inspection_help_clear_and_backtracking(identity):
     engine = GameEngine()
-    engine.transition("mirror_chamber")
-    command(engine, "probe 13")
-    engine.transition("sealed_archive")
-    command(engine, "read seal")
-    engine.transition(level_id)
-    command(engine, "nonsense")
-    result = command(engine, "back")
-    assert result.transition_to == target
-    assert engine.current_level().id == target
-    assert engine.state.flags == {"null_echo_found", "seal_read"}
-    assert engine.state.consecutive_unknown_commands == 0
-
-
-@pytest.mark.parametrize("line", ["", "   \t\n"])
-def test_empty_input_is_a_noop_and_keeps_counter(line):
-    engine = GameEngine()
-    command(engine, "nonsense")
-    result = command(engine, line)
-    assert result.noop
-    assert not result.unknown
-    assert result.trap_id is None
-    assert engine.state.consecutive_unknown_commands == 1
-
-
-@pytest.mark.parametrize("read_first", [False, True])
-@pytest.mark.parametrize("line", ["unlock wrong", "unlock MIRROR", 'unlock "red; reboot"', "unlock mirror extra"])
-def test_wrong_unlock_arguments_request_only_seal_lockout(read_first, line):
-    engine = GameEngine()
-    engine.transition("sealed_archive")
-    if read_first:
-        command(engine, "read seal")
-    command(engine, "nonsense")
-    flags = engine.state.flags.copy()
-    result = command(engine, line)
-    assert result.trap_id == "seal_lockout"
-    assert not result.unknown
-    assert not result.authentication_gate
-    assert result.transition_to is None
-    assert engine.current_level().id == "sealed_archive"
-    assert engine.state.flags == flags
-    assert engine.state.consecutive_unknown_commands == 0
-
-
-@pytest.mark.parametrize("level_id,remaining", [
-    ("mirror_chamber", {"seal_read"}),
-    ("sealed_archive", {"null_echo_found"}),
-    ("dormant_relay", {"null_echo_found", "seal_read"}),
-    ("archive_junction", {"null_echo_found", "seal_read"}),
-    ("decoy_archive", {"null_echo_found", "seal_read"}),
-])
-def test_reset_current_level_removes_only_local_discovery(level_id, remaining):
-    engine = GameEngine()
-    engine.transition("mirror_chamber")
-    command(engine, "probe 13")
-    engine.transition("sealed_archive")
-    command(engine, "read seal")
-    engine.transition(level_id)
-    command(engine, "nonsense")
-    engine.reset_current_level()
-    assert engine.current_level().id == level_id
-    assert engine.state.flags == remaining
-    assert engine.state.consecutive_unknown_commands == 0
-    assert engine.available_commands() == engine.current_level().visible_commands
-    if level_id == "mirror_chamber":
-        assert command(engine, "enter null").unknown
-    if level_id == "sealed_archive":
-        assert not command(engine, "unlock mirror").authentication_gate
-
-
-def test_reset_game_restores_initial_state_and_independent_instances():
-    engine = GameEngine()
-    other = GameEngine()
-    engine.transition("mirror_chamber")
-    command(engine, "probe 13")
-    engine.transition("sealed_archive")
-    command(engine, "read seal")
-    command(engine, "nonsense")
-    assert other.state.flags == set()
-    assert other.state.current_level == "dormant_relay"
-    assert other.state.consecutive_unknown_commands == 0
-    engine.reset_game()
-    assert engine.state == other.state
-    assert "wake" not in engine.available_commands()
-
-
-@pytest.mark.parametrize("level_id", [
-    "dormant_relay", "mirror_chamber", "archive_junction", "decoy_archive", "sealed_archive",
-])
-def test_clear_returns_an_outcome_and_intro_uses_terminal_print(level_id):
-    engine = GameEngine()
-    engine.transition(level_id)
-    stream = io.StringIO()
-    terminal = Terminal(stream=stream, effects=False)
+    engine.transition(identity)
+    engine.state.flags.update({'route_verified', 'seal_ready'})
     level = engine.current_level()
-    engine.render_intro(terminal)
-    assert stream.getvalue() == "\n".join((level.ascii_scene, *level.intro_lines, ""))
-    command(engine, "nonsense")
-    result = command(engine, "clear")
-    assert result.clear
-    assert not result.unknown
-    assert result.message == ""
-    assert engine.state.consecutive_unknown_commands == 0
-    assert engine.current_level() == level
+    assert command(engine, 'pwd').message == level.prompt.split(':', 1)[1][:-1]
+    assert command(engine, 'status').message
+    for name in command(engine, 'ls').message.split():
+        assert command(engine, 'cat ' + name).message
+    flags = engine.state.flags.copy()
+    assert command(engine, 'clear').clear
+    assert command(engine, 'help').message.splitlines() == list(engine.available_commands())
+    output = io.StringIO()
+    engine.render_intro(Terminal(output, effects=False))
+    assert level.intro_lines[0] in output.getvalue()
+    if level.back_target:
+        assert command(engine, 'back').transition_to == level.back_target
+        assert engine.state.flags == flags
+    else:
+        assert engine.move_back().noop
 
 
-@pytest.mark.parametrize("level_id,line", [
-    ("mirror_chamber", "enter null"),
-    ("sealed_archive", "unlock mirror"),
-])
-def test_required_flags_cannot_be_bypassed_or_fall_through_to_a_trap(level_id, line):
+def test_diagnostics_is_optional_and_returns_to_relay():
     engine = GameEngine()
-    engine.transition(level_id)
-    result = command(engine, line)
-    assert result.unknown
-    assert result.trap_id is None
-    assert not result.authentication_gate
-    assert result.transition_to is None
-    assert engine.state.flags == set()
-    assert engine.current_level().id == level_id
-    assert engine.state.consecutive_unknown_commands == 1
-
-
-@pytest.mark.parametrize("level_id,line,trap", [
-    ("mirror_chamber", "probe 03", "false_probe"),
-    ("mirror_chamber", "probe 08", "false_probe"),
-    ("archive_junction", "open red", "red_purge"),
-])
-def test_wrong_choices_return_trap_ids_without_applying_trap_effects(level_id, line, trap):
-    engine = GameEngine()
-    engine.transition("mirror_chamber")
-    command(engine, "probe 13")
-    engine.transition(level_id)
-    command(engine, "nonsense")
-    result = command(engine, line)
-    assert result.trap_id == trap
-    assert not result.unknown
-    assert not result.authentication_gate
-    assert result.transition_to is None
-    assert engine.current_level().id == level_id
-    assert engine.state.flags == {"null_echo_found"}
-    assert engine.state.consecutive_unknown_commands == 0
-
-
-def test_white_archive_is_a_decoy_and_returns_to_junction():
-    engine = GameEngine()
-    engine.transition("archive_junction")
-    assert command(engine, "open white").transition_to == "decoy_archive"
-    assert command(engine, "status").message == "ARCHIVE STATUS: PERFECT\nERROR COUNT: 0\nSECURITY STATE: VERIFIED"
-    assert command(engine, "read index").message == "A REAL ARCHIVE WOULD NOT LEAVE THE EXIT OPEN."
-    # Even discovery elsewhere cannot turn a decoy command into authentication.
-    engine.state.flags.update({"seal_read", "null_echo_found"})
-    for line in ("unlock mirror", "enter null", "open black", "read seal", "wake", "store notes", "auth"):
+    assert command(engine, 'connect diagnostics').transition_to == 'diagnostics'
+    assert 'route13: carrier retained' in command(engine, 'cat relay.log').message
+    assert 'external keyring unchanged' in command(engine, 'cat history').message
+    assert command(engine, 'back').transition_to == 'relay_root'
+    assert not engine.state.flags
+    for line in ROUTE:
         result = command(engine, line)
-        assert result.unknown
-        assert not result.authentication_gate
-        assert result.transition_to is None
-        assert result.trap_id is None
-        assert engine.current_level().id == "decoy_archive"
-    assert command(engine, "back").transition_to == "archive_junction"
+    assert result.authentication_gate
 
 
-@pytest.mark.parametrize("level_id", [
-    "mirror_chamber", "archive_junction", "decoy_archive", "sealed_archive",
-])
-def test_unknown_threshold_applies_only_at_dormant_relay(level_id):
+def test_white_archive_isolated_even_with_all_discoveries():
     engine = GameEngine()
-    engine.transition(level_id)
-    for count in range(1, 5):
-        result = command(engine, "nonsense")
-        assert result.unknown
-        assert result.trap_id is None
+    engine.transition('archive_bus')
+    assert command(engine, 'mount white').transition_to == 'white_archive'
+    engine.state.flags.update({'bus_scanned', 'route_verified', 'controller_found', 'seal_ready'})
+    for line in (*ROUTE, 'auth', 'store notes', 'cat /etc/passwd'):
+        result = command(engine, line)
+        assert not result.authentication_gate and not result.transition_to and not result.trap_id
+        assert engine.current_level().id == 'white_archive'
+    assert command(engine, 'cat index').message == 'readme     current\ninventory  current\nrecords: 2'
+    assert command(engine, 'umount white').transition_to == 'archive_bus'
+
+
+def test_red_inspection_and_risky_write_remain_separate():
+    engine = GameEngine()
+    engine.transition('archive_bus')
+    assert command(engine, 'mount red').transition_to == 'red_maintenance'
+    assert 'read-only' in command(engine, 'status').message
+    assert command(engine, 'cat journal').trap_id is None
+    assert command(engine, 'probe journal').trap_id == 'false_probe'
+    assert command(engine, 'mount -o rw red').trap_id == 'red_purge'
+    assert engine.current_level().id == 'red_maintenance'
+    assert command(engine, 'umount red').transition_to == 'archive_bus'
+
+
+@pytest.mark.parametrize('identity,line,trap', [
+    ('route_table', 'probe 03', 'false_probe'),
+    ('route_table', 'probe 08', 'false_probe'),
+    ('route_table', 'connect 08', 'false_probe'),
+    ('seal_controller', 'sealctl wrong', 'seal_lockout'),
+    ('seal_controller', 'sealctl UNLOCK', 'seal_lockout'),
+    ('seal_controller', 'sealctl "red; reboot"', 'seal_lockout'),
+])
+def test_wrong_commands_only_request_traps(identity, line, trap):
+    engine = GameEngine()
+    engine.transition(identity)
+    result = command(engine, line)
+    assert result.trap_id == trap and not result.authentication_gate
+    assert engine.current_level().id == identity
+    assert engine.state.flags == set()
+
+
+def test_local_reset_and_backtracking_discoveries():
+    engine = GameEngine()
+    for line in ROUTE[:-1]:
+        command(engine, line)
+    flags = engine.state.flags.copy()
+    command(engine, 'back')
+    command(engine, 'connect sealctl')
+    assert command(engine, 'sealctl unlock').authentication_gate
+    engine.reset_current_level()
+    assert engine.state.flags == flags - {'seal_ready'}
+    assert command(engine, 'sealctl unlock').unknown
+    engine.transition('route_table')
+    engine.reset_current_level()
+    assert 'route_verified' not in engine.state.flags
+    assert command(engine, 'connect 13').unknown
+
+
+@pytest.mark.parametrize('identity', levels.LEVELS)
+def test_unknown_counter_empty_input_and_recognized_reset(identity):
+    engine = GameEngine()
+    engine.transition(identity)
+    for count in (1, 2):
+        assert command(engine, 'unknown').unknown
         assert engine.state.consecutive_unknown_commands == count
-    command(engine, "help")
+    assert command(engine, '   ').noop
+    assert engine.state.consecutive_unknown_commands == 2
+    result = command(engine, 'unknown')
+    assert result.trap_id == ('signal_scramble' if identity == 'relay_root' else None)
+    assert command(engine, 'status').message
     assert engine.state.consecutive_unknown_commands == 0
 
 
-@pytest.mark.parametrize("line", ["wake extra", "help extra", "clear extra", "back", "WAKE extra"])
-def test_unsupported_argument_tuples_and_absent_back_are_unknown(line):
+@pytest.mark.parametrize('line', ['connect bus extra', 'help extra', 'clear extra', 'back', 'connect BUS'])
+def test_invalid_argument_tuples_are_unknown(line):
     engine = GameEngine()
     assert command(engine, line).unknown
-    assert engine.current_level().id == "dormant_relay"
+    assert engine.current_level().id == 'relay_root'
 
 
-def test_command_case_is_normalized_only_by_parser_and_argument_case_is_preserved():
+def test_parser_only_normalizes_command_case():
     engine = GameEngine()
-    assert command(engine, "WAKE").transition_to == "mirror_chamber"
-    command(engine, "PROBE 13")
-    assert command(engine, "ENTER NULL").unknown
-    assert command(engine, "ENTER null").transition_to == "archive_junction"
-    assert command(engine, "OPEN BLACK").unknown
-    assert command(engine, "OPEN black").transition_to == "sealed_archive"
-    assert command(engine, "unlock").unknown
+    assert command(engine, 'CONNECT bus').transition_to == 'device_bus'
+    command(engine, 'SCAN')
+    assert command(engine, 'ROUTE -N').unknown
+    assert command(engine, 'ROUTE -n').transition_to == 'route_table'
 
 
-def test_wake_stays_hidden_and_discoveries_survive_backtracking():
+def test_fresh_instances_and_reset_never_persist_progress(tmp_path, monkeypatch):
+    monkeypatch.setenv('VAULTGAME_HOME', str(tmp_path))
+    (tmp_path / 'state.json').write_text('not game state')
     engine = GameEngine()
-    assert "wake" not in command(engine, "help").message.splitlines()
-    command(engine, "wake")
-    command(engine, "probe 13")
-    command(engine, "back")
-    assert "wake" not in command(engine, "help").message.splitlines()
-    command(engine, "wake")
-    assert "enter" in engine.available_commands()
-    command(engine, "enter null")
-    command(engine, "open black")
-    command(engine, "read seal")
-    command(engine, "back")
-    command(engine, "open black")
-    assert "unlock" in engine.available_commands()
-    assert command(engine, "unlock mirror").authentication_gate
-
-
-def test_direct_navigation_validates_target_without_corrupting_state():
-    engine = GameEngine()
-    assert engine.move_back().noop
-    command(engine, "nonsense")
-    with pytest.raises(ValueError, match="Unknown level"):
-        engine.transition("missing")
-    assert engine.current_level().id == "dormant_relay"
-    assert engine.state.consecutive_unknown_commands == 1
-    result = engine.transition("mirror_chamber")
-    assert result.transition_to == "mirror_chamber"
-    assert engine.state.consecutive_unknown_commands == 0
-    assert engine.move_back().transition_to == "dormant_relay"
-
-
-def test_game_never_reads_or_writes_runtime_progress(tmp_path, monkeypatch):
-    monkeypatch.setenv("VAULTGAME_HOME", str(tmp_path))
-    # Invalid JSON also establishes that game construction never loads these.
-    for name in ("config.json", "state.json"):
-        (tmp_path / name).write_text("not game state", encoding="utf-8")
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
-    engine = GameEngine()
-    for line in ("wake", "probe 13", "enter null", "open black", "read seal", "unlock mirror"):
+    for line in ROUTE:
         command(engine, line)
-    engine.reset_current_level()
-    engine.reset_game()
+    assert engine.state.flags
     assert GameEngine().state.flags == set()
-    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+    engine.reset_game()
+    assert engine.state == GameEngine().state
+    assert engine.current_level().id == 'relay_root'
+    assert (tmp_path / 'state.json').read_text() == 'not game state'
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_invalid_direct_transition_preserves_state():
+    engine = GameEngine()
+    command(engine, 'unknown')
+    with pytest.raises(ValueError, match='Unknown level'):
+        engine.transition('missing')
+    assert engine.current_level().id == 'relay_root'
+    assert engine.state.consecutive_unknown_commands == 1
 
 
 @pytest.mark.parametrize("line", [
@@ -342,7 +224,7 @@ def test_game_never_reads_or_writes_runtime_progress(tmp_path, monkeypatch):
 def test_shell_looking_arguments_are_inert_unknown_commands(line, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     engine = GameEngine()
-    engine.transition("mirror_chamber")
+    engine.transition("route_table")
     result = command(engine, line)
     assert result.unknown
     assert result.trap_id is None
@@ -369,3 +251,19 @@ def test_game_layer_has_no_execution_persistence_or_later_stage_imports(module, 
             elif isinstance(node.func, ast.Attribute):
                 assert node.func.attr not in {"system", "popen", "sleep", "write_text", "write_bytes"}
     assert imports == allowed_imports
+
+
+@pytest.mark.parametrize('identity,discovery,before,after', [
+    ('device_bus', 'scan', 'enumeration pending', 'enumerated'),
+    ('route_table', 'probe 13', 'unverified', 'route13: verified'),
+    ('black_archive', 'cat controller', 'detached', 'available'),
+    ('seal_controller', 'sealctl status', 'unverified', 'control: verified'),
+])
+def test_status_tracks_local_discovery_and_reset(identity, discovery, before, after):
+    engine = GameEngine()
+    engine.transition(identity)
+    assert before in command(engine, 'status').message
+    command(engine, discovery)
+    assert after in command(engine, 'status').message
+    engine.reset_current_level()
+    assert before in command(engine, 'status').message

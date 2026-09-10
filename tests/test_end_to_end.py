@@ -23,8 +23,9 @@ from vaultgame.vault.session import VaultLockedError, VaultSession
 PASSWORD = 'RELAY-E2E-PASSWORD-MARKER-91D7'
 CONTENT = b'RELAY-E2E-CONTENT-MARKER-61C2'
 NAME = 'RELAY-E2E-FILENAME-MARKER.txt'
-ROUTE = ['status', 'wake', 'scan', 'probe 13', 'enter null', 'inspect',
-         'open black', 'inspect', 'read seal', 'unlock mirror']
+ROUTE = ['connect bus', 'scan', 'route -n', 'probe 13', 'connect 13',
+         'mount archive0', 'mount black', 'cat controller', 'connect sealctl',
+         'sealctl status', 'sealctl unlock']
 
 
 @pytest.fixture(autouse=True)
@@ -186,18 +187,18 @@ def test_successful_lifecycle_lock_replay_and_reauthentication(vault, tmp_path, 
     result, output, visits = drive(ROUTE + ['list', f'store "{source}" "{NAME}"',
         stored, 'list', f'info "{NAME}"', f'retrieve "{NAME}" "{destination}"',
         f'rename "{NAME}" renamed.bin', renamed, 'list', 'remove renamed.bin', 'yes',
-        'list', 'lock', locked, 'unlock mirror'] + ROUTE + ['list', 'exit'],
+        'list', 'lock', locked, 'sealctl unlock'] + ROUTE + ['list', 'exit'],
         [PASSWORD, PASSWORD])
     assert result == 0 and len(visits) == 2
     assert len(sessions) == 2 and sessions[0][0] is not sessions[1][0]
     assert destination.read_bytes() == source.read_bytes()
-    assert output.count('PROTECTED INDEX EMPTY.') == 3
-    assert 'Name: ' + NAME in output
-    assert 'Created:' in output and 'Updated:' in output
-    assert 'Unknown command.' in output.split('LINK LOST', 1)[1]
-    assert 'relay://sleep>' in output.split('LINK LOST', 1)[1]
-    assert all('seal://mirror>' in visit for visit in visits)
-    assert 'core://open>' not in visits[0]
+    assert output.count('index: empty') == 3
+    assert 'name: ' + NAME in output
+    assert 'created:' in output and 'updated:' in output
+    assert 'command: unavailable' in output.split('session: locked', 1)[1]
+    assert 'relay0:/proc/relay>' in output.split('session: locked', 1)[1]
+    assert all('sealctl:/control>' in visit for visit in visits)
+    assert 'vault0:/data>' not in visits[0]
     assert all(identity not in output for identity in ids)
     assert list(vault.objects_dir.iterdir()) == []
 
@@ -206,11 +207,11 @@ def test_encrypted_files_persist_but_progress_and_sessions_do_not(vault, tmp_pat
     source = seed(vault, tmp_path)
     before = snapshot(vault)
     destination = tmp_path / 'after-restart.bin'
-    result, output, visits = drive(['unlock mirror', 'status'] + ROUTE +
+    result, output, visits = drive(['sealctl unlock', 'status'] + ROUTE +
         ['list', f'retrieve "{NAME}" "{destination}"', 'exit'], [PASSWORD])
     assert result == 0 and len(visits) == 1
-    assert output.index('relay://sleep>') < output.index('IDENTITY MATERIAL REQUIRED')
-    assert 'Unknown command.' in output and 'CARRIER: ASLEEP' in output
+    assert output.index('relay0:/proc/relay>') < output.index('auth: identity material required')
+    assert 'command: unavailable' in output and 'relay0: carrier detected' in output
     assert NAME in output and destination.read_bytes() == source.read_bytes()
     assert snapshot(vault) == before
     assert len(sessions) == 2 and sessions[0][0] is not sessions[1][0]
@@ -221,25 +222,25 @@ def test_encrypted_files_persist_but_progress_and_sessions_do_not(vault, tmp_pat
 
 def test_decoy_cannot_authenticate_and_back_returns_to_junction(vault):
     before = snapshot(vault)
-    result, output, visits = drive(ROUTE[:5] + ['inspect', 'open white', 'status',
-        'read index', 'unlock mirror', 'enter null', 'back', 'inspect'])
+    result, output, visits = drive(ROUTE[:6] + ['cat mounts', 'mount white', 'status',
+        'cat index', 'sealctl unlock', 'connect 13', 'back', 'cat mounts'])
     assert result == 0 and visits == []
-    assert 'ARCHIVE STATUS: PERFECT' in output
-    assert 'ERROR COUNT: 0' in output and 'SECURITY STATE: VERIFIED' in output
-    assert 'A REAL ARCHIVE WOULD NOT LEAVE THE EXIT OPEN.' in output
-    assert output.count('archive://junction>') >= 3
-    assert 'IDENTITY MATERIAL REQUIRED' not in output
+    assert 'index: clean' in output
+    assert 'errors: 0' in output and 'checks: complete' in output
+    assert 'records: 2' in output
+    assert output.count('archive0:/mnt>') >= 3
+    assert 'auth: identity material required' not in output
     assert snapshot(vault) == before
 
 
 def test_fake_trap_chain_keeps_stored_ciphertext_and_filenames_unchanged(vault, tmp_path):
     seed(vault, tmp_path)
     before = snapshot(vault)
-    result, output, visits = drive(['unknown'] * 3 + ['wake', 'probe 03', 'probe 13',
-        'enter null', 'open red'])
+    result, output, visits = drive(['unknown'] * 3 + ROUTE[:3] + ['probe 03']
+                                  + ROUTE[3:6] + ['mount red', 'mount -o rw red'])
     assert result == 0 and visits == []
-    assert 'RELAY SIGNAL LOST' in output and 'REBUILDING SIGNAL' in output
-    assert 'DELETING INDEX_07.SYS' in output and 'PURGE COMPLETE' in output
+    assert 'relay0: carrier degraded' in output and 'route: recovering' in output
+    assert 'journal: dropping scratch_07.idx' in output and 'red: journal detached' in output
     assert snapshot(vault) == before
 
 
@@ -264,21 +265,22 @@ def test_persisted_lockouts_block_restart_until_controlled_expiry(vault, tmp_pat
     seed(vault, tmp_path)
     before = snapshot(vault)
     wrong = 'WRONG-E2E-PASSWORD-NEVER-PERSIST-3E41'
-    commands = ROUTE[:7] + ['unlock wrong'] if seconds == 10 else ROUTE
+    commands = ROUTE[:9] + ['sealctl wrong'] if seconds == 10 else ROUTE
     result, output, visits = drive(commands, [] if seconds == 10 else [wrong] * 3)
     assert result == (0 if seconds == 10 else 1)
     assert len(visits) == (0 if seconds == 10 else 3)
-    assert output.count('IDENTITY REJECTED') == (0 if seconds == 10 else 3)
-    assert 'CHECKSUM FAILURE' in output and wrong not in output
+    assert output.count('auth: key check failed') == (0 if seconds == 10 else 3)
+    assert 'metadata mismatch' in output and wrong not in output
     until = datetime.fromisoformat(load_runtime_state(vault).cooldown_until)
     assert until == utc_clock[0] + timedelta(seconds=seconds)
     result, blocked, visits = drive(ROUTE)
     assert result == 0 and visits == []
-    assert f'RETRY IN {seconds} SECONDS' in blocked
-    assert 'relay://sleep>' not in blocked
+    assert f'relay0: backoff {seconds}s' in blocked
+    assert f'cooldown   :: {seconds}s' in blocked
+    assert 'relay0:/proc/relay>' not in blocked
     utc_clock[0] += timedelta(seconds=seconds + 1)
     result, restarted, visits = drive(['status'])
-    assert result == 0 and visits == [] and 'CARRIER: ASLEEP' in restarted
+    assert result == 0 and visits == [] and 'relay0: carrier detected' in restarted
     assert load_runtime_state(vault).cooldown_until is None
     assert snapshot(vault) == before
     for path in vault.home.rglob('*'):
@@ -321,14 +323,14 @@ def test_retrieval_failure_never_publishes_or_keeps_partial_plaintext(vault, tmp
                                      'list', 'exit'], [PASSWORD])
     assert snapshot(vault) == before
     if failure == 'destination':
-        assert result == 0 and 'File operation refused' in output
+        assert result == 0 and 'file: operation refused' in output
         assert destination.read_bytes() == b'EXISTING OUTPUT MUST SURVIVE'
         assert list(destination_dir.iterdir()) == [destination]
     else:
         assert result == 1 and 'integrity check failed' in output
         assert not destination.exists()
         assert list(destination_dir.iterdir()) == []
-    assert 'FILE RETRIEVED' not in output
+    assert 'retrieve: complete' not in output
     assert source.exists()
 
 
@@ -386,13 +388,13 @@ def test_watchdog_timeout_discards_stale_input_and_requires_replay(vault, tmp_pa
         assert sessions[0][0].timed_out.wait(5)
 
     result, output, visits = drive(ROUTE + [expire, f'store "{source}"',
-        'unlock mirror'] + ROUTE + ['list', 'exit'], [PASSWORD, PASSWORD])
+        'sealctl unlock'] + ROUTE + ['list', 'exit'], [PASSWORD, PASSWORD])
     assert result == 0 and len(visits) == 2 and len(sessions) == 2
-    assert 'CONNECTION EXPIRED' in output
-    reset_output = output.split('CONNECTION EXPIRED', 1)[1]
-    assert reset_output.index('relay://sleep>') < reset_output.index('IDENTITY MATERIAL REQUIRED')
-    assert 'Unknown command.' in reset_output
-    assert 'FILE PROTECTED' not in output and 'PROTECTED INDEX EMPTY' in output
+    assert 'session: locked (idle timeout)' in output
+    reset_output = output.split('session: locked (idle timeout)', 1)[1]
+    assert reset_output.index('relay0:/proc/relay>') < reset_output.index('auth: identity material required')
+    assert 'command: unavailable' in reset_output
+    assert 'store: complete' not in output and 'index: empty' in output
     assert snapshot(vault) == before
 
 
@@ -431,7 +433,7 @@ def test_busy_real_store_completes_before_later_idle_lock(vault, tmp_path, monke
         'remove disposable.bin'] + ROUTE +
         [f'retrieve disposable.bin "{destination}"', 'exit'], [PASSWORD, PASSWORD])
     assert result == 0 and len(visits) == 2
-    assert 'FILE PROTECTED' in output and 'CONNECTION EXPIRED' in output
+    assert 'store: complete' in output and 'session: locked (idle timeout)' in output
     assert destination.read_bytes() == source.read_bytes()
     assert "remove 'disposable.bin'?" not in output
 
@@ -450,7 +452,7 @@ def test_interrupts_restore_terminal_and_clean_sessions(vault, tmp_path, session
     terminal = Terminal(TTY(), effects=True, sleep=lambda _: None)
     commands = (ROUTE if unlocked else []) + [interrupt()]
     result, output, _ = drive(commands, [PASSWORD] if unlocked else [], terminal=terminal)
-    assert result == 0 and 'RELAY DISCONNECTED' in output
+    assert result == 0 and 'relay0: disconnected' in output
     assert '\x1b[0m\x1b[?25h' in output
     assert output.rfind('\x1b[?25h') > output.rfind('\x1b[?25l')
     assert snapshot(vault) == before
@@ -458,13 +460,13 @@ def test_interrupts_restore_terminal_and_clean_sessions(vault, tmp_path, session
 
 def test_shell_looking_game_and_vault_inputs_are_inert(vault):
     before = snapshot(vault)
-    result, output, visits = drive(['wake', 'probe "$(reboot)"', 'probe 13',
-        'enter null', 'open "red; shutdown -h now"', 'open black', 'read seal',
-        'unlock mirror', 'store "/tmp/file; rm -rf /"', 'info "| cat /etc/passwd"',
+    result, output, visits = drive(ROUTE[:3] + ['probe "$(reboot)"'] + ROUTE[3:6]
+        + ['mount "red; shutdown -h now"'] + ROUTE[6:]
+        + ['store "/tmp/file; rm -rf /"', 'info "| cat /etc/passwd"',
         'list > /tmp/relay-e2e-injection', 'list', 'exit'], [PASSWORD])
     assert result == 0 and len(visits) == 1
-    assert 'Unknown command' in output and 'File operation refused' in output
-    assert 'PROTECTED INDEX EMPTY' in output
+    assert 'command: unavailable' in output and 'file: operation refused' in output
+    assert 'index: empty' in output
     assert snapshot(vault) == before
 
 

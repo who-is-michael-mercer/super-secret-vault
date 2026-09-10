@@ -1,6 +1,9 @@
 """Standard-library terminal rendering with optional, injectable timing."""
 
 import builtins
+import os
+import shutil
+from contextlib import contextmanager, nullcontext
 import random
 import sys
 import time
@@ -23,10 +26,17 @@ class Terminal:
         stream: TextIO | None = None,
         effects: bool = True,
         sleep: Callable[[float], None] = time.sleep,
+        *,
+        input_stream: TextIO | None = None,
+        keyboard=None,
+        width: int | None = None,
     ) -> None:
         self.stream = sys.stdout if stream is None else stream
         self._animated = effects and self.stream.isatty()
         self._sleep = sleep
+        self.input_stream = sys.stdin if input_stream is None else input_stream
+        self._keyboard = keyboard if keyboard is not None else self._tty_keyboard
+        self.width = width if width is not None else shutil.get_terminal_size((80, 24)).columns
 
     def __enter__(self) -> Self:
         try:
@@ -54,8 +64,11 @@ class Terminal:
         sep: str = " ",
         end: str = "\n",
         flush: bool = True,
+        style: str | None = None,
     ) -> None:
         """Print to the configured stream, flushing by default."""
+        if style and self._animated:
+            text = self.styled(str(text), style)
         builtins.print(text, *values, sep=sep, end=end, file=self.stream, flush=flush)
 
     def type_text(self, text: str, chars_per_second: float = 40) -> None:
@@ -95,19 +108,93 @@ class Terminal:
         if self._animated:
             self.print("\x1b[0m", end="")
 
-    def progress(self, label: str, duration: float, width: int = 20) -> None:
-        """Fill a progress bar over duration seconds."""
+    def styled(self, text: str, style: str = "accent") -> str:
+        colors = {"accent": "36", "muted": "90", "warning": "33", "error": "31"}
+        return f"\x1b[{colors[style]}m{text}\x1b[0m" if self._animated else text
+
+    @contextmanager
+    def _tty_keyboard(self):
+        """Own temporary input mode and consume a complete skip keystroke.
+
+        cbreak retains signal handling (Ctrl+C), unlike raw mode. Flush pending
+        input on skip so escape sequences and pasted bytes cannot become a
+        command. Fixed effects never enter this context or read input.
+        """
+        if not self.input_stream.isatty():
+            yield None
+            return
+        if os.name == "nt":
+            import msvcrt
+
+            def poll():
+                if not msvcrt.kbhit():
+                    return False
+                while msvcrt.kbhit():
+                    if msvcrt.getwch() == "\x03":
+                        raise KeyboardInterrupt
+                return True
+
+            yield poll
+            return
+        import select
+        import termios
+        import tty
+
+        fd = self.input_stream.fileno()
+        previous = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd, termios.TCSANOW)
+
+            def poll():
+                if not select.select([fd], [], [], 0)[0]:
+                    return False
+                key = os.read(fd, 1)
+                termios.tcflush(fd, termios.TCIFLUSH)
+                if key == b"\x1b":
+                    # A terminal may deliver an arrow/function key in fragments.
+                    try:
+                        self._sleep(0.025)
+                    finally:
+                        termios.tcflush(fd, termios.TCIFLUSH)
+                if key == b"\x03":
+                    raise KeyboardInterrupt
+                return True
+
+            yield poll
+        finally:
+            termios.tcsetattr(fd, termios.TCSANOW, previous)
+
+    def _wait(self, seconds, poll):
+        if poll is None:
+            self._sleep(seconds)
+            return False
+        # Short injected sleeps bound skip latency without real-time test waits.
+        while seconds > 0:
+            if poll():
+                return True
+            interval = min(seconds, 0.025)
+            self._sleep(interval)
+            seconds -= interval
+        return poll()
+
+    def progress(self, label: str, duration: float, width: int = 20,
+                 *, skippable: bool = True) -> None:
+        """Cosmetic completion indicator; callers report only completed work."""
         if duration < 0 or width <= 0:
             raise ValueError("duration must be nonnegative and width must be positive")
-        if not self._animated:
-            self.print(f"{label} [{'#' * width}] 100%")
-            return
-        for filled in range(width + 1):
-            bar = "#" * filled + "-" * (width - filled)
-            self.print(f"\r\x1b[2K{label} [{bar}] {filled * 100 // width}%", end="")
-            if filled < width:
-                self._sleep(duration / width)
-        self.print()
+        frames = (f"{label} [{'#' * n}{'-' * (width - n)}] {n * 100 // width}%"
+                  for n in range(width + 1))
+        self.animate_frames(frames, duration / width, skippable=skippable)
+
+    def sequence(self, lines: Iterable[str], duration: float = 1.2) -> None:
+        """A fixed verification sequence; each completed line stays in history."""
+        if duration < 0:
+            raise ValueError("duration must be nonnegative")
+        lines = tuple(lines)
+        for line in lines:
+            self.print(line, style="accent")
+            if self._animated:
+                self._sleep(duration / len(lines))
 
     def countdown(self, seconds: int, prefix: str = "") -> None:
         """Count whole seconds down to zero."""
@@ -123,22 +210,42 @@ class Terminal:
         self.print()
 
     def animate_frames(
-        self, frames: Iterable[str], frame_delay: float, loops: int = 1
+        self, frames: Iterable[str], frame_delay: float, loops: int = 1,
+        *, skippable: bool = True,
     ) -> None:
-        """Repaint full-screen ASCII frames, with frame_delay in seconds."""
+        """Repaint only the effect's own lines, preserving terminal history."""
         if frame_delay < 0 or loops < 0:
             raise ValueError("frame_delay and loops must be nonnegative")
         frames = tuple(frames)
-        if not self._animated:
-            if frames and loops:
-                self.print(frames[-1])
+        if not frames or not loops:
             return
-        for loop in range(loops):
-            for index, frame in enumerate(frames):
-                self.clear()
-                self.print(frame)
-                if loop < loops - 1 or index < len(frames) - 1:
-                    self._sleep(frame_delay)
+        if not self._animated:
+            self.print(frames[-1])
+            return
+        previous_lines = 0
+
+        def paint(frame):
+            nonlocal previous_lines
+            if previous_lines:
+                self.print(f"\x1b[{previous_lines}A", end="")
+            columns = max(1, self.width - 1)
+            lines = [part[offset:offset + columns]
+                     for part in frame.split("\n")
+                     for offset in range(0, max(1, len(part)), columns)]
+            height = max(previous_lines, len(lines))
+            for index in range(height):
+                line = lines[index] if index < len(lines) else ""
+                self.print("\r\x1b[2K" + line)
+            previous_lines = height
+
+        with self._keyboard() if skippable else nullcontext(None) as poll:
+            for loop in range(loops):
+                for index, frame in enumerate(frames):
+                    paint(frame)
+                    if loop < loops - 1 or index < len(frames) - 1:
+                        if self._wait(frame_delay, poll):
+                            paint(frames[-1])
+                            return
 
     def fake_system_messages(self, lines: Iterable[str]) -> None:
         """Print presentation-only messages, separated by 100 milliseconds."""
@@ -154,15 +261,13 @@ class Terminal:
         if not self._animated:
             self.print(text)
             return
+        frames = []
         for _ in range(passes):
-            scrambled = "".join(
+            frames.append("".join(
                 character if character.isspace()
-                else random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#?@")
-                for character in text
-            )
-            self.print(f"\r\x1b[2K{scrambled}", end="")
-            self._sleep(0.05)
-        self.print(f"\r\x1b[2K{text}")
+                else random.choice("0123456789abcdef.-") for character in text
+            ))
+        self.animate_frames((*frames, text), 0.05)
 
     def flash_lines(self, lines: Iterable[str], delay: float = 0.1) -> None:
         """Flash a full-screen scene in reverse video, then redraw it normally."""
