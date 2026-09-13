@@ -10,6 +10,12 @@ persistent Relay service. Keep the crypto/storage core intact. Password is real
 authentication; hardware authentication is deferred. Stop after the Stage 1 gate.
 The two later terminal sequences and presentation defaults remain design proposals.
 
+Stage 1 research correction: the earlier GitHub source pin below is an archived
+2021 tree. The isolated probe uses active SourceHut imv v5.0.1 at
+`bdec0e527be289e08c3a70c8719a85994d26bd4d`; see the verification record for actual
+observations, patch size, limitations and the gate verdict. Earlier source-level
+claims must not be mistaken for qualification of the current release.
+
 Prepared 2026-09-13 on `v3/design`, against repository commit
 `37fc810f1267dd0e692a94764c8710f39d3c59a8`.
 

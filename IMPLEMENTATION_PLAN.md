@@ -148,3 +148,8 @@ Run and record tests after each authorized stage; tests must never execute real
 machine actions. Evidence and the gate verdict belong in
 [experience verification](docs/verification/EXPERIENCE.md). Success of this gate
 does not mean the experience phase is complete or authorize the next stage.
+
+Experience status: Stage 0 complete (`ca9e0fc`). Stage 1 produced a small isolated
+imv probe with passing native Wayland focus/geometry/file-identity tests, but the
+required physical-key test remains unverified. **Stage 1 does not pass the gate.**
+See its verification record; no Stage 2 or later implementation is authorized.
