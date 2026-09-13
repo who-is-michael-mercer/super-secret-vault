@@ -112,3 +112,39 @@ Stages 0–7 are implemented. Final verification: 1321 passing tests and a rebui
 wheel exercised in a fresh environment outside the checkout. See
 `docs/verification/RELEASE.md` for stage evidence, operational limits and measured
 carrier performance. No real machine action was executed during verification.
+
+## Approved subsequent experience phase
+
+The owner approved [the Relay experience plan](docs/RELAY_EXPERIENCE_PLAN.md).
+Its numbered experience stages are separate from the completed original V3 stages
+0–7 above. Preserve the original completion record and the frozen core design.
+
+**Current authorization: experience Stages 0 and 1 only, on `v3/design`.**
+Stage 0 records approval, environment and a fresh safe full-suite baseline. Stage 1
+is an isolated imv feasibility gate under `integrations/imv/`: prove viewer-local
+focus/input, loaded-file identity and rendering geometry, demonstrate a development
+eligibility predicate and sequence invalidation, and test the actual keyboard.
+Do not implement Stage 2 settings/input redesign, a Relay launcher, production
+cover/animation/route changes, or any later stage without another owner instruction.
+
+Approved decisions: one supported viewer, imv with a small opt-in Relay-specific
+patch; preferred image sequence HOME, F7, END, PAUSE, PGUP, CAPSLOCK, ESC, HOME.
+INSERT is a fallback recommendation only if the actual keyboard cannot emit PAUSE.
+No global capture, `/dev/input`, desktop shortcut daemon, screen scraping, broad
+desktop polling, persistent Relay service, root, system viewer replacement or file
+association changes. The optional viewer patch is a narrow approved integration,
+not authorization for a plugin framework or shell execution. The later fixed-argv
+terminal launcher remains unimplemented and unauthorized in these stages.
+
+Concealment is not authentication. Password remains the real factor; YubiKey is a
+future phase. Leave cryptography, capsule/PNG storage semantics, transactions,
+backups, recovery and migration untouched unless a concrete incompatibility is
+identified and reported. Stop Stage 1 if reliable observation requires a prohibited
+mechanism, a large viewer fork, or unreliable displayed-image/file identity.
+Qualify the current native Wayland environment first; do not claim X11/XWayland
+without direct testing. Stop after Stage 1 even if it passes.
+
+Run and record tests after each authorized stage; tests must never execute real
+machine actions. Evidence and the gate verdict belong in
+[experience verification](docs/verification/EXPERIENCE.md). Success of this gate
+does not mean the experience phase is complete or authorize the next stage.
