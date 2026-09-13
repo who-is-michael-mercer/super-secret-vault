@@ -17,7 +17,7 @@ def forbid_real_processes(monkeypatch):
 
 @pytest.mark.parametrize("name", ["close_terminal", "logout", "reboot", "shutdown"])
 def test_dispatches_only_predefined_actions(monkeypatch, name):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     calls = []
     for candidate in ("close_terminal", "logout", "reboot", "shutdown"):
         monkeypatch.setattr(os_actions, candidate, lambda candidate=candidate: calls.append(candidate))
@@ -31,7 +31,7 @@ def test_dispatches_only_predefined_actions(monkeypatch, name):
     ("shutdown", ["/usr/bin/systemctl", "--no-ask-password", "poweroff"]),
 ])
 def test_linux_actions_use_fixed_commands(monkeypatch, name, command):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     monkeypatch.setattr(os_actions.sys, "platform", "linux")
     monkeypatch.setenv("XDG_SESSION_ID", "untrusted; shutdown now")
     calls = []
@@ -51,7 +51,7 @@ def test_linux_actions_use_fixed_commands(monkeypatch, name, command):
     (subprocess.TimeoutExpired("mocked", 10), "ActionNotAllowedError"),
 ])
 def test_execution_errors_are_controlled(monkeypatch, failure, error_name):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     monkeypatch.setattr(os_actions.sys, "platform", "linux")
 
     def fail(*args, **kwargs):
@@ -66,7 +66,7 @@ def test_execution_errors_are_controlled(monkeypatch, failure, error_name):
 @pytest.mark.parametrize("name", ["", "SHUTDOWN", "poweroff", "shutdown now", "$(reboot)",
                                   "reboot;shutdown", "/usr/bin/reboot", None, [], 1])
 def test_unknown_action_never_invokes_a_process(name):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     with pytest.raises(os_actions.UnsupportedActionError):
         os_actions.perform_os_action(name)
 
@@ -74,7 +74,7 @@ def test_unknown_action_never_invokes_a_process(name):
 @pytest.mark.parametrize("platform", ["win32", "darwin", "freebsd14", "unknown"])
 @pytest.mark.parametrize("name", ["close_terminal", "logout", "reboot", "shutdown"])
 def test_unsupported_platforms_are_controlled(monkeypatch, platform, name):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     monkeypatch.setattr(os_actions.sys, "platform", platform)
     with pytest.raises(os_actions.UnsupportedActionError):
         os_actions.perform_os_action(name)
@@ -82,7 +82,7 @@ def test_unsupported_platforms_are_controlled(monkeypatch, platform, name):
 
 @pytest.fixture
 def direct_kitty(monkeypatch):
-    from relayvault import os_actions
+    from v2_reference import os_actions
     monkeypatch.setattr(os_actions.sys, "platform", "linux")
     for key in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY", "TMUX", "STY",
                 "KITTY_LISTEN_ON", "KITTY_RC_PASSWORD"):
@@ -139,7 +139,7 @@ def test_close_handles_unidentifiable_tty(monkeypatch, direct_kitty):
 
 
 def test_os_boundary_uses_no_shell_signals_or_external_arguments():
-    from relayvault import os_actions
+    from v2_reference import os_actions
     tree = ast.parse(inspect.getsource(os_actions))
     forbidden_calls = {"system", "popen", "eval", "exec", "kill", "killpg", "getppid",
                        "Popen", "call", "check_call", "check_output"}
@@ -164,8 +164,8 @@ def test_os_boundary_uses_no_shell_signals_or_external_arguments():
     ]
 
 
-def test_only_incidents_imports_os_action_boundary():
-    from relayvault import os_actions
+def test_only_traps_imports_os_action_boundary():
+    from v2_reference import os_actions
     package = Path(os_actions.__file__).parent
     importers = set()
     for path in package.rglob("*.py"):
@@ -179,4 +179,4 @@ def test_only_incidents_imports_os_action_boundary():
                 continue
             if any("os_actions" in name.split(".") for name in names):
                 importers.add(path.relative_to(package).as_posix())
-    assert importers == {"incidents.py"}
+    assert importers == {"traps.py"}

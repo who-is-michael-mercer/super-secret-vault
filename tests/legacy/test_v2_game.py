@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame import game, levels
-from vaultgame.game import GameEngine
-from vaultgame.parser import parse_command
-from vaultgame.terminal import Terminal
+from v2_reference import game, levels
+from v2_reference.game import GameEngine
+from v2_reference.parser import parse_command
+from v2_reference.terminal import Terminal
 
 
 # Eleven short commands: a learned route fits ordinary 20–40s typing.

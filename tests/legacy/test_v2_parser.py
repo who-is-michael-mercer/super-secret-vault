@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-from relayvault import parser
-from relayvault.parser import CommandParseError, ParsedCommand, parse_command
+from v2_reference import parser
+from v2_reference.parser import CommandParseError, ParsedCommand, parse_command
 
 
 def test_command_with_no_arguments():

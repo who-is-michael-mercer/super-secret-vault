@@ -13,11 +13,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from vaultgame import main as app, os_actions, traps
-from vaultgame.config import is_initialized, load_config, load_runtime_state, resolve_paths
-from vaultgame.terminal import Terminal
-from vaultgame.vault import session as session_module, storage
-from vaultgame.vault.session import VaultLockedError, VaultSession
+from v2_reference import main as app, os_actions, traps
+from v2_reference.config import is_initialized, load_config, load_runtime_state, resolve_paths
+from v2_reference.terminal import Terminal
+from v2_reference.vault import session as session_module, storage
+from v2_reference.vault.session import VaultLockedError, VaultSession
 
 
 PASSWORD = 'RELAY-E2E-PASSWORD-MARKER-91D7'

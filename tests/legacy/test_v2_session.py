@@ -1,8 +1,8 @@
 import base64
 
-from vaultgame.config import AppConfig, resolve_paths
-from vaultgame.vault import crypto, storage
-from vaultgame.vault.session import VaultSession
+from v2_reference.config import AppConfig, resolve_paths
+from v2_reference.vault import crypto, storage
+from v2_reference.vault.session import VaultSession
 
 
 def test_authentication_and_lock(tmp_path):
@@ -26,9 +26,9 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame.config import ConfigError
-from vaultgame.vault import session as session_module
-from vaultgame.vault.session import AuthenticationError, VaultLockedError
+from v2_reference.config import ConfigError
+from v2_reference.vault import session as session_module
+from v2_reference.vault.session import AuthenticationError, VaultLockedError
 
 
 @pytest.fixture(scope='module')

@@ -18,8 +18,8 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from vaultgame.config import AppConfig, AppPaths
-from vaultgame.vault import crypto
+from v2_reference.config import AppConfig, AppPaths
+from v2_reference.vault import crypto
 
 
 class StorageError(ValueError):

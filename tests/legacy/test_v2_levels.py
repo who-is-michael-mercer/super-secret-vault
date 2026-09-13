@@ -2,7 +2,7 @@
 
 import pytest
 
-from vaultgame.levels import LEVELS
+from v2_reference.levels import LEVELS
 
 
 EXPECTED_BACK = {

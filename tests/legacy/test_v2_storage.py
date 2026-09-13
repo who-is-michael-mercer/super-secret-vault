@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame.config import AppConfig, resolve_paths
-from vaultgame.vault import crypto, storage
+from v2_reference.config import AppConfig, resolve_paths
+from v2_reference.vault import crypto, storage
 
 KEY = bytes(range(32))
 NOW = "2026-09-09T12:00:00+00:00"
@@ -720,9 +720,9 @@ def test_architecture_has_no_shell_crypto_duplication_or_later_stage_imports():
                 }
         if isinstance(node, ast.ImportFrom):
             assert node.module in {
-                "contextlib", "dataclasses", "datetime", "pathlib", "vaultgame.config", "vaultgame.vault",
+                "contextlib", "dataclasses", "datetime", "pathlib", "v2_reference.config", "v2_reference.vault",
             }
-            if node.module == "vaultgame.vault":
+            if node.module == "v2_reference.vault":
                 assert [alias.name for alias in node.names] == ["crypto"]
         if isinstance(node, ast.Call):
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")

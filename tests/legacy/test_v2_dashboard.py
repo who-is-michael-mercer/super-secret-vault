@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame.config import AppConfig, RuntimeState, resolve_paths, save_runtime_state_atomic
-from vaultgame.dashboard import SCHEMATIC, opaque_object_count, render_dashboard
-from vaultgame.terminal import Terminal
-from vaultgame.vault import crypto, storage
+from v2_reference.config import AppConfig, RuntimeState, resolve_paths, save_runtime_state_atomic
+from v2_reference.dashboard import SCHEMATIC, opaque_object_count, render_dashboard
+from v2_reference.terminal import Terminal
+from v2_reference.vault import crypto, storage
 
 
 class TTY(io.StringIO):
@@ -116,7 +116,7 @@ def test_tty_dashboard_uses_cyan_accent(public_layout):
 
 
 def test_denied_count_reports_no_private_details(public_layout, monkeypatch):
-    from vaultgame import dashboard
+    from v2_reference import dashboard
     def denied(*args):
         raise PermissionError('PRIVATE-PATH')
     monkeypatch.setattr(dashboard.os, 'scandir', denied)

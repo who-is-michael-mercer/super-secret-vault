@@ -1,9 +1,9 @@
 import importlib
 import json
 
-from vaultgame.config import is_initialized, load_config, resolve_paths
+from v2_reference.config import is_initialized, load_config, resolve_paths
 
-main_module = importlib.import_module('vaultgame.main')
+main_module = importlib.import_module('v2_reference.main')
 
 
 def test_init_prompts_and_publishes_complete_configuration(tmp_path, monkeypatch, capsys):
@@ -32,9 +32,9 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame import config as config_module
-from vaultgame.vault import crypto, storage
-from vaultgame.vault.session import AuthenticationError, VaultSession
+from v2_reference import config as config_module
+from v2_reference.vault import crypto, storage
+from v2_reference.vault.session import AuthenticationError, VaultSession
 
 
 @pytest.fixture
@@ -172,9 +172,9 @@ def test_concurrent_existing_json_is_not_overwritten(init_home, monkeypatch, fie
 
 
 def test_module_uses_shared_init_entry_point(init_home, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['vaultgame', 'init'])
+    monkeypatch.setattr(sys, 'argv', ['v2_reference', 'init'])
     with pytest.raises(SystemExit) as error:
-        runpy.run_module('vaultgame', run_name='__main__')
+        runpy.run_module('v2_reference', run_name='__main__')
     assert error.value.code == 0
     assert is_initialized(init_home)
 

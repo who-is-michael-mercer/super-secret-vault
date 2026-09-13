@@ -11,17 +11,17 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from vaultgame.config import (AppConfig, ConfigError, RuntimeState, resolve_paths,
+from v2_reference.config import (AppConfig, ConfigError, RuntimeState, resolve_paths,
                               ensure_runtime_directories, is_initialized, load_config,
                               load_runtime_state,
                               save_config_atomic, save_runtime_state_atomic)
-from vaultgame.dashboard import render_dashboard
-from vaultgame.game import GameEngine
-from vaultgame.parser import CommandParseError, parse_command
-from vaultgame.terminal import Terminal
-from vaultgame.traps import dispatch_trap
-from vaultgame.vault import crypto, storage
-from vaultgame.vault.session import AuthenticationError, VaultLockedError, VaultSession
+from v2_reference.dashboard import render_dashboard
+from v2_reference.game import GameEngine
+from v2_reference.parser import CommandParseError, parse_command
+from v2_reference.terminal import Terminal
+from v2_reference.traps import dispatch_trap
+from v2_reference.vault import crypto, storage
+from v2_reference.vault.session import AuthenticationError, VaultLockedError, VaultSession
 
 
 def main(argv: list[str] | None = None) -> int:

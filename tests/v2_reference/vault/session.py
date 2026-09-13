@@ -9,8 +9,8 @@ import threading
 import time
 from contextlib import contextmanager
 
-from vaultgame.config import validate_initialized_config
-from vaultgame.vault import crypto, storage
+from v2_reference.config import validate_initialized_config
+from v2_reference.vault import crypto, storage
 
 
 class AuthenticationError(ValueError):

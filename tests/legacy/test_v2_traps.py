@@ -10,13 +10,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from vaultgame import traps
-from vaultgame.config import (
+from v2_reference import traps
+from v2_reference.config import (
     AppConfig, ConfigError, load_config, resolve_paths, save_config_atomic, validate_config,
 )
 
-from vaultgame.traps import TRAPS, TrapAction, TrapDefinition, TrapResult
-from vaultgame.terminal import Terminal
+from v2_reference.traps import TRAPS, TrapAction, TrapDefinition, TrapResult
+from v2_reference.terminal import Terminal
 
 
 @pytest.fixture(autouse=True)
@@ -106,7 +106,7 @@ def test_unknown_trap_or_action_is_controlled(tmp_path, monkeypatch, unknown_act
 
 @pytest.mark.parametrize("failure", ["replace", "write", "load"])
 def test_cooldown_failure_is_controlled_and_preserves_state(tmp_path, monkeypatch, failure):
-    from vaultgame import config
+    from v2_reference import config
     paths = resolve_paths(tmp_path)
     paths.state_path.write_text("{" if failure == "load" else '{"schema_version": 1}')
     original = paths.state_path.read_bytes()
@@ -133,7 +133,7 @@ def test_cooldown_failure_is_controlled_and_preserves_state(tmp_path, monkeypatc
     {"real_os_actions": {}},
 ])
 def test_configuration_round_trip_and_trap_gates(tmp_path, settings, monkeypatch):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     actions = []
     monkeypatch.setattr(os_actions, "perform_os_action", actions.append)
     paths = resolve_paths(tmp_path)
@@ -158,7 +158,7 @@ def test_cooldown_persisted_and_ordered(tmp_path, monkeypatch, trap_id, duration
     original = paths.state_path.read_bytes()
     terminal = RecordingTerminal()
     instant = datetime(2026, 9, 8, 18, 30, tzinfo=timezone.utc)
-    from vaultgame import config
+    from v2_reference import config
     real_replace = config.os.replace
 
     def observe_replace(source, destination):
@@ -395,8 +395,8 @@ def test_trap_source_keeps_the_stage_boundary():
 
 
 def test_stage4_unknown_trap_and_reset_callback_integration(tmp_path):
-    from vaultgame.game import GameEngine
-    from vaultgame.parser import parse_command
+    from v2_reference.game import GameEngine
+    from v2_reference.parser import parse_command
     engine = GameEngine()
     for _ in range(3):
         request = engine.handle(parse_command("unknown"))
@@ -454,7 +454,7 @@ def test_ordered_callbacks_and_exit_are_returned_without_terminating(tmp_path, m
     }},
 ])
 def test_real_action_gates_preserve_every_fake_trap(tmp_path, monkeypatch, trap_id, real_settings):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
 
     def forbidden(*args):
         pytest.fail("Incomplete real-action configuration reached the OS dispatcher")
@@ -480,7 +480,7 @@ def test_real_action_gates_preserve_every_fake_trap(tmp_path, monkeypatch, trap_
 @pytest.mark.parametrize("trap_id", list(TRAPS))
 @pytest.mark.parametrize("action", ["close_terminal", "logout", "reboot", "shutdown"])
 def test_explicit_binding_dispatches_once_after_complete_fake_sequence(tmp_path, monkeypatch, trap_id, action):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     paths = resolve_paths(tmp_path / "bound")
     instant = datetime(2026, 9, 9, tzinfo=timezone.utc)
     baseline_terminal = RecordingTerminal()
@@ -511,7 +511,7 @@ def test_explicit_binding_dispatches_once_after_complete_fake_sequence(tmp_path,
 
 @pytest.mark.parametrize("settings", [{"enabled": False}, {"disabled_traps": list(TRAPS)}])
 def test_disabled_traps_never_reach_explicit_os_bindings(tmp_path, monkeypatch, settings):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
 
     def forbidden(*args):
         pytest.fail("Disabled trap reached OS dispatcher")
@@ -531,7 +531,7 @@ def test_disabled_traps_never_reach_explicit_os_bindings(tmp_path, monkeypatch, 
 @pytest.mark.parametrize("action", ["shutdown now", "$(reboot)", "reboot; shutdown", "${ACTION}",
                                   "/usr/bin/reboot", "SHUTDOWN", "poweroff", ""])
 def test_unsupported_binding_is_controlled_after_fake_actions(tmp_path, monkeypatch, action):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     terminal = RecordingTerminal()
     config = AppConfig(real_os_actions={
         "enabled": True, "allowed_actions": [action], "bindings": {"red_purge": action},
@@ -548,7 +548,7 @@ def test_unsupported_binding_is_controlled_after_fake_actions(tmp_path, monkeypa
 
 @pytest.mark.parametrize("error_name", ["UnsupportedActionError", "ActionNotAllowedError"])
 def test_real_action_errors_remain_controlled_and_follow_cooldown(tmp_path, monkeypatch, error_name):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     paths = resolve_paths(tmp_path)
     terminal = RecordingTerminal()
     failure = getattr(os_actions, error_name)("mocked OS rejection")
@@ -570,7 +570,7 @@ def test_real_action_errors_remain_controlled_and_follow_cooldown(tmp_path, monk
 
 
 def test_failed_fake_cooldown_prevents_real_action(tmp_path, monkeypatch):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
 
     def forbidden(*args):
         pytest.fail("Failed fake sequence reached OS dispatcher")
@@ -586,7 +586,7 @@ def test_failed_fake_cooldown_prevents_real_action(tmp_path, monkeypatch):
 
 
 def test_unknown_trap_cannot_use_an_explicit_binding(tmp_path, monkeypatch):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
 
     def forbidden(*args):
         pytest.fail("Unknown trap reached OS dispatcher")
@@ -601,9 +601,9 @@ def test_unknown_trap_cannot_use_an_explicit_binding(tmp_path, monkeypatch):
 
 
 def test_shell_looking_input_and_game_trap_ids_cannot_bypass_gates(tmp_path, monkeypatch):
-    from vaultgame import os_actions
-    from vaultgame.game import GameEngine
-    from vaultgame.parser import parse_command
+    from v2_reference import os_actions
+    from v2_reference.game import GameEngine
+    from v2_reference.parser import parse_command
 
     def forbidden(*args):
         pytest.fail("Game input reached OS dispatcher without configuration gates")

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vaultgame"
-version = "0.1.0"
-description = "A terminal game leading to a local encrypted vault"
+name = "super-secret-vault"
+version = "3.0.0"
+description = "A local encrypted vault concealed behind Relay"
 requires-python = ">=3.12"
 dependencies = ["cryptography>=44.0.0"]
 
@@ -13,11 +13,11 @@ dependencies = ["cryptography>=44.0.0"]
 dev = ["pytest"]
 
 [project.scripts]
-relay = "vaultgame.main:main"
+relay = "relayvault.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]

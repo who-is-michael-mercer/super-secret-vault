@@ -1,6 +1,7 @@
 # Project instructions
 
-`IMPLEMENTATION_PLAN.md` is the authoritative specification for this project.
+`IMPLEMENTATION_PLAN.md` is the authoritative V3 specification. The historical
+plan in `docs/history/` is reference only; do not continue its stages.
 
 Follow it rather than redesigning the architecture.
 
@@ -17,4 +18,3 @@ Real logout, reboot, shutdown, and terminal-closing actions must remain disabled
 Do not weaken or replace the cryptographic design specified in the implementation plan without identifying a concrete implementation incompatibility first.
 
 The project is finished only when the Definition of Completion in `IMPLEMENTATION_PLAN.md` is satisfied and the full test suite passes.
-

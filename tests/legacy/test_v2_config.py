@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from vaultgame import config
-from vaultgame.config import (
+from v2_reference import config
+from v2_reference.config import (
     AppConfig,
     ConfigError,
     RuntimeState,
@@ -17,7 +17,7 @@ from vaultgame.config import (
     save_runtime_state_atomic,
     validate_config,
 )
-from vaultgame.main import main
+from v2_reference.main import main
 
 
 def test_default_home_resolution(monkeypatch, tmp_path):

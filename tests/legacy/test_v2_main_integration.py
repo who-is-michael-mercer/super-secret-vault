@@ -7,13 +7,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from vaultgame import main as app
-from vaultgame.config import (AppConfig, RuntimeState, load_runtime_state,
+from v2_reference import main as app
+from v2_reference.config import (AppConfig, RuntimeState, load_runtime_state,
                               resolve_paths, save_config_atomic,
                               save_runtime_state_atomic)
-from vaultgame.terminal import Terminal
-from vaultgame.vault import crypto, storage
-from vaultgame.vault.session import VaultSession
+from v2_reference.terminal import Terminal
+from v2_reference.vault import crypto, storage
+from v2_reference.vault.session import VaultSession
 
 
 def test_uninitialized_startup_never_prompts(tmp_path, monkeypatch):
@@ -56,7 +56,7 @@ def vault(tmp_path, monkeypatch, credentials):
     save_runtime_state_atomic(paths, RuntimeState())
     monkeypatch.setenv('VAULTGAME_HOME', str(paths.home))
     # Fail closed even when this module is run without the outer audit runner.
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     def forbidden(*args, **kwargs):
         pytest.fail('Real OS action attempted')
     monkeypatch.setattr(os_actions, 'perform_os_action', forbidden)
@@ -160,7 +160,7 @@ def sessions(monkeypatch):
 
 def test_timeout_while_reading_ignores_command_and_resets(vault, sessions, monkeypatch):
     import threading
-    from vaultgame.vault import session as session_module
+    from v2_reference.vault import session as session_module
     password, key, config, paths = vault
     clock = [0.0]
     monkeypatch.setattr(session_module.time, 'monotonic', lambda: clock[0])
@@ -408,7 +408,7 @@ def test_watchdog_start_failure_locks_authenticated_session(vault, sessions, mon
 
 @pytest.mark.parametrize('kind', ['storage', 'io', 'integrity', 'locked'])
 def test_operation_errors_use_safe_messages_and_cleanup(vault, sessions, monkeypatch, kind):
-    from vaultgame.vault.session import VaultLockedError
+    from v2_reference.vault.session import VaultLockedError
     password, _, _, _ = vault
     errors = {'storage': storage.StorageError, 'io': OSError,
               'integrity': crypto.IntegrityError, 'locked': VaultLockedError}
@@ -470,9 +470,9 @@ def test_shared_entrypoint_starts_game_without_authentication(vault, monkeypatch
     monkeypatch.setattr(builtins, 'input', eof)
     monkeypatch.setattr(app.getpass, 'getpass', forbidden)
     if module_route:
-        monkeypatch.setattr(sys, 'argv', ['vaultgame'])
+        monkeypatch.setattr(sys, 'argv', ['v2_reference'])
         with pytest.raises(SystemExit) as stopped:
-            runpy.run_module('vaultgame', run_name='__main__')
+            runpy.run_module('v2_reference', run_name='__main__')
         assert stopped.value.code == 0
     else:
         assert app.main([]) == 0
@@ -517,7 +517,7 @@ def test_already_timed_out_session_does_not_prompt_in_vault(vault, sessions, mon
 
 
 def test_trap_movement_callbacks_and_returned_level_use_game_api(vault, monkeypatch):
-    from vaultgame.traps import TrapResult
+    from v2_reference.traps import TrapResult
     events = []
     original = app.GameEngine
     game = original()
@@ -539,7 +539,7 @@ def test_trap_movement_callbacks_and_returned_level_use_game_api(vault, monkeypa
 
 
 def test_explicit_os_binding_still_uses_traps_after_fake_effects(vault, monkeypatch):
-    from vaultgame import os_actions
+    from v2_reference import os_actions
     _, _, config, paths = vault
     config.real_os_actions = {'enabled': True, 'allowed_actions': ['shutdown'],
                               'bindings': {'signal_scramble': 'shutdown'}}

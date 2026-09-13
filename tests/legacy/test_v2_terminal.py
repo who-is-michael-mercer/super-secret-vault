@@ -3,7 +3,7 @@ from io import StringIO
 
 import pytest
 
-from relayvault.terminal import Terminal
+from v2_reference.terminal import Terminal
 
 
 class TTYStream(StringIO):
