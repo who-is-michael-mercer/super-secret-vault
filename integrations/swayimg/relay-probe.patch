@@ -1,0 +1,349 @@
+diff --git i/src/appevent.hpp w/src/appevent.hpp
+index c22c681..ceca601 100644
+--- i/src/appevent.hpp
++++ w/src/appevent.hpp
+@@ -31,6 +31,9 @@ struct WindowRescale {
+     double scale; ///< New scale factor of the window
+ };
+ 
++// Development observer events, queued onto the Lua/application thread.
++struct RelayProbe { std::string kind; uint32_t code = 0; };
++
+ /** Key press event. */
+ struct KeyPress {
+     InputKeyboard key; ///< Key description
+@@ -87,7 +90,7 @@ struct FileRemove {
+ };
+ 
+ // clang-format off
+-using Holder = std::variant<WindowClose,
++using Holder = std::variant<RelayProbe, WindowClose,
+                             WindowRedraw,
+                             WindowResize,
+                             WindowRescale,
+diff --git i/src/application.cpp w/src/application.cpp
+index 49eaa5c..c5bdb2d 100644
+--- i/src/application.cpp
++++ w/src/application.cpp
+@@ -388,10 +388,19 @@ void Application::event_loop()
+ 
+ void Application::handle_event(const AppEvent::Holder& event)
+ {
++    if (const auto* probe = std::get_if<AppEvent::RelayProbe>(&event)) {
++        if (on_relay_event) on_relay_event(probe->kind, probe->code);
++        return;
++    }
++    if (on_relay_event && !std::holds_alternative<AppEvent::KeyPress>(event) &&
++        !std::holds_alternative<AppEvent::WindowRedraw>(event))
++        on_relay_event("change", 0);
+     // NOLINTBEGIN(bugprone-branch-clone)
+     std::visit(
+         [this](const auto& event) {
+-            if constexpr (std::is_same_v<decltype(event),
++            if constexpr (std::is_same_v<decltype(event), const AppEvent::RelayProbe&>) {
++                return;
++            } else if constexpr (std::is_same_v<decltype(event),
+                                          const AppEvent::WindowClose&>) {
+                 handle_event(event);
+             } else if constexpr (std::is_same_v<
+diff --git i/src/application.hpp w/src/application.hpp
+index 247d56a..82ff339 100644
+--- i/src/application.hpp
++++ w/src/application.hpp
+@@ -160,6 +160,7 @@ private:
+ 
+ public:
+     std::unique_ptr<StartupParams> sparams;   ///< Startup parameters
++    std::function<void(const std::string&, uint32_t)> on_relay_event;
+     std::function<void()> on_init_complete;   ///< Init complete callback
+     std::function<void()> on_wnd_resize;      ///< Window resize callback
+     std::function<void()> on_redraw_complete; ///< Redraw complete callback
+diff --git i/src/formatfactory.cpp w/src/formatfactory.cpp
+index 6eae9fa..5fafc41 100644
+--- i/src/formatfactory.cpp
++++ w/src/formatfactory.cpp
+@@ -16,6 +16,7 @@
+ #include <unistd.h>
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cerrno>
+ 
+ #ifdef HAVE_LIBEXIV2
+@@ -26,6 +27,7 @@ namespace {
+ 
+ /** Image data reader. */
+ struct DataBuffer : public ImageFormat::Data {
++    RelayOrigin origin;
+     ~DataBuffer()
+     {
+         if (container.empty() && data) {
+@@ -94,8 +96,43 @@ private:
+      * @param file path to the file to load
+      * @return true if file loaded
+      */
++    // Probe-only bounded private snapshot, stamped using the SAME descriptor.
++    // No mmap: a concurrent truncate cannot SIGBUS this development path.
++    bool read_probe_file(const std::filesystem::path& file)
++    {
++        const int fd = open(file.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++        if (fd < 0) return false;
++        struct stat before, after;
++        bool ok = fstat(fd, &before) == 0 && !relay_stamp(before).empty() &&
++            before.st_size > 0 && before.st_size <= 16 * 1024 * 1024;
++        if (ok) {
++            container.resize(before.st_size);
++            size_t offset = 0;
++            while (offset < container.size()) {
++                const ssize_t n = read(fd, container.data() + offset,
++                                       container.size() - offset);
++                if (n < 0 && errno == EINTR) continue;
++                if (n <= 0) { ok = false; break; }
++                offset += n;
++            }
++            ok = ok && fstat(fd, &after) == 0 &&
++                relay_stamp(before) == relay_stamp(after);
++        }
++        close(fd);
++        if (!ok) return false;
++        static std::atomic<size_t> generation = 0;
++        origin.path = file.string();
++        origin.stamp = relay_stamp(before);
++        origin.generation = ++generation;
++        if (!origin.current()) return false;
++        data = container.data();
++        size = container.size();
++        return true;
++    }
++
+     bool read_file(const std::filesystem::path& file)
+     {
++        if (relay_probe_enabled()) return read_probe_file(file);
+         assert(!data && !size);
+ 
+         // get file size and checktype
+@@ -269,6 +306,8 @@ ImagePtr FormatFactory::load(const ImageEntryPtr& entry) const
+         }
+         entry->size = data.size;
+         image->entry = entry;
++        data.origin.original = image->relay_origin.original;
++        image->relay_origin = data.origin;
+     }
+ 
+     return image;
+diff --git i/src/image.cpp w/src/image.cpp
+index 5e02d06..1ec71f5 100644
+--- i/src/image.cpp
++++ w/src/image.cpp
+@@ -23,6 +23,7 @@ void Image::draw(const size_t frame, Pixmap& target, const double scale,
+ 
+ void Image::flip_vertical()
+ {
++    relay_origin.original = false;
+     for (auto& it : frames) {
+         it.pm.flip_vertical();
+     }
+@@ -30,6 +31,7 @@ void Image::flip_vertical()
+ 
+ void Image::flip_horizontal()
+ {
++    relay_origin.original = false;
+     for (auto& it : frames) {
+         it.pm.flip_horizontal();
+     }
+@@ -37,6 +39,7 @@ void Image::flip_horizontal()
+ 
+ void Image::rotate(const size_t angle)
+ {
++    relay_origin.original = false;
+     for (auto& it : frames) {
+         it.pm.rotate(angle);
+     }
+diff --git i/src/image.hpp w/src/image.hpp
+index 976c8a8..3133d4c 100644
+--- i/src/image.hpp
++++ w/src/image.hpp
+@@ -5,6 +5,7 @@
+ #pragma once
+ 
+ #include "pixmap.hpp"
++#include "relay_probe.hpp"
+ 
+ #include <filesystem>
+ #include <limits>
+@@ -83,6 +84,7 @@ public:
+ 
+     std::vector<Frame> frames; ///< Image frames
+ 
++    RelayOrigin relay_origin; // Bound to the bytes used for this decode.
+     ImageEntryPtr entry; ///< Image entry
+ 
+     std::string format;                      ///< Image format description
+diff --git i/src/luaengine.cpp w/src/luaengine.cpp
+index b56ea80..9e6db39 100644
+--- i/src/luaengine.cpp
++++ w/src/luaengine.cpp
+@@ -3,6 +3,7 @@
+ // Copyright (C) 2026 Artem Senichev <artemsen@gmail.com>
+ 
+ #include "luaengine.hpp"
++#include <chrono>
+ 
+ #include "application.hpp"
+ #include "formatfactory.hpp"
+@@ -662,6 +663,17 @@ void LuaEngine::bind_root_api()
+                              call_lua(*ref);
+                          };
+                      })
++        .addFunction("relay_time", []() {
++            return std::chrono::duration<double>(
++                std::chrono::steady_clock::now().time_since_epoch()).count();
++        })
++        .addFunction("on_relay_event", [this](const luabridge::LuaRef& cb) {
++            if (!cb.isFunction()) raise_error("Expected probe callback");
++            const auto* ref = add_ref(&cb);
++            Application::self().on_relay_event = [ref](const std::string& kind, uint32_t code) {
++                call_lua(*ref, kind.c_str(), code);
++            };
++        })
+         .addFunction("on_redrawn",
+                      [this](const luabridge::LuaRef& cb) {
+                          Application& app = Application::self();
+@@ -1392,6 +1404,11 @@ void LuaEngine::bind_viewer_api(const char* name)
+                     return luabridge::LuaRef(lua_state, luabridge::LuaNil {});
+                 }
+                 luabridge::LuaRef tbl = entry_to_table(*image->entry);
++                tbl["relay_current"] = image->relay_origin.current();
++                tbl["relay_origin"] = image->relay_origin.stamp;
++                tbl["relay_path"] = image->relay_origin.path;
++                tbl["relay_generation"] = image->relay_origin.generation;
++                tbl["relay_original"] = image->relay_origin.original;
+                 tbl["format"] = image->format;
+                 tbl["frames"] = image->frames.size();
+                 tbl["width"] = image->frames[0].pm.width();
+diff --git i/src/relay_probe.hpp w/src/relay_probe.hpp
+new file mode 100644
+index 0000000..d5a3531
+--- /dev/null
++++ w/src/relay_probe.hpp
+@@ -0,0 +1,31 @@
++// SPDX-License-Identifier: MIT
++// Opt-in Stage 1B development observation; no launcher or authentication.
++#pragma once
++#include <sys/stat.h>
++#include <unistd.h>
++#include <cstdlib>
++#include <filesystem>
++#include <format>
++#include <string>
++
++inline bool relay_probe_enabled() { return std::getenv("RELAY_SWAYIMG_PROBE"); }
++inline std::string relay_stamp(const struct stat& s)
++{
++    if (!S_ISREG(s.st_mode) || s.st_uid != getuid() || s.st_nlink != 1)
++        return {};
++    return std::format("{}:{}:{}:{}:{}:{}:{}", s.st_dev, s.st_ino, s.st_size,
++                       s.st_mtim.tv_sec, s.st_mtim.tv_nsec,
++                       s.st_ctim.tv_sec, s.st_ctim.tv_nsec);
++}
++struct RelayOrigin {
++    std::string path, stamp;
++    size_t generation = 0;
++    bool original = true;
++    bool current() const {
++        struct stat s;
++        std::error_code ec;
++        const auto canonical = std::filesystem::canonical(path, ec);
++        return original && !stamp.empty() && !ec && canonical == path &&
++            lstat(path.c_str(), &s) == 0 && relay_stamp(s) == stamp;
++    }
++};
+diff --git i/src/text.cpp w/src/text.cpp
+index 3134604..4e5b2e4 100644
+--- i/src/text.cpp
++++ w/src/text.cpp
+@@ -168,6 +168,7 @@ void Text::set_status(const std::string& msg)
+         // force hide status message
+         status_tm.fd.reset(0, 0);
+         status_tm.show = false;
++        Application::redraw();
+         return;
+     }
+ 
+diff --git i/src/ui_wayland.cpp w/src/ui_wayland.cpp
+index 5063668..17345f4 100644
+--- i/src/ui_wayland.cpp
++++ w/src/ui_wayland.cpp
+@@ -26,9 +26,17 @@ public:
+     /***************************************************************************
+      * Keyboard handlers
+      **************************************************************************/
++    static void probe(const char* kind, uint32_t code = 0) {
++        if (relay_probe_enabled())
++            Application::self().add_event(AppEvent::RelayProbe {kind, code});
++    }
+     static void on_keyboard_enter(void*, struct wl_keyboard*, uint32_t,
+-                                  struct wl_surface*, struct wl_array*)
++                                  struct wl_surface*, struct wl_array* keys)
+     {
++        probe("enter");
++        const auto* held = static_cast<const uint32_t*>(keys->data);
++        for (size_t i = 0; i < keys->size / sizeof(uint32_t); ++i)
++            probe("held", held[i]);
+     }
+ 
+     static void on_keyboard_leave(void* data, struct wl_keyboard*, uint32_t,
+@@ -36,6 +44,7 @@ public:
+     {
+         const UiWayland* ui = reinterpret_cast<UiWayland*>(data);
+         ui->xkb.stop_repeat(0);
++        probe("leave");
+     }
+ 
+     static void on_keyboard_modifiers(void* data, struct wl_keyboard*, uint32_t,
+@@ -59,6 +68,8 @@ public:
+                                    int32_t fd, uint32_t size)
+     {
+         UiWayland* ui = reinterpret_cast<UiWayland*>(data);
++        probe("keymap"); // Reset the prefix without fabricating a focus leave.
++        ui->xkb.stop_repeat(0);
+         ui->xkb.setup_mapping(fd, size);
+         close(fd);
+     }
+@@ -68,6 +79,7 @@ public:
+     {
+         UiWayland* ui = reinterpret_cast<UiWayland*>(data);
+ 
++        probe(state == WL_KEYBOARD_KEY_STATE_PRESSED ? "press" : "release", key);
+         key += 8;
+         if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+             ui->xkb.stop_repeat(key);
+@@ -319,6 +331,8 @@ public:
+                                          ui);
+             }
+         } else if (ui->wl.keyboard) {
++            ui->xkb.stop_repeat(0);
++            probe("leave");
+             wl_keyboard_destroy(ui->wl.keyboard);
+             ui->wl.keyboard = nullptr;
+         }
+@@ -1037,6 +1051,7 @@ void UiWayland::run()
+                 const auto [key, repeat] = xkb.get_repeat();
+                 const keymod_t km = xkb.get_modifiers();
+                 for (size_t i = 0; i < repeat; ++i) {
++                    WaylandHandler::probe("repeat", xkb.relay_repeat_code());
+                     Application::self().add_event(
+                         AppEvent::KeyPress { key, km });
+                 }
+diff --git i/src/xkb.hpp w/src/xkb.hpp
+index 98315b3..d0a4322 100644
+--- i/src/xkb.hpp
++++ w/src/xkb.hpp
+@@ -61,6 +61,7 @@ public:
+      * @return repeat file descriptor
+      */
+     [[nodiscard]] int repeat_fd() const;
++    [[nodiscard]] uint32_t relay_repeat_code() const { return repeat_code - 8; }
+ 
+     /**
+      * Update modifiers state.

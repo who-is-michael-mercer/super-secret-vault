@@ -165,3 +165,26 @@ not satisfied. A subsequent authorized attempt must close that evidence gap and
 review the reload/input limitations before treating Stage 1 as passed.
 
 **STAGE 1 DOES NOT PASS — revise viewer strategy before continuing**
+
+## Subsequent owner-authorized Stage 1B
+
+The owner requested a separate Swayimg qualification following this imv evidence
+gap. Its source/API investigation, narrow patch, native Wayland tests and physical
+input results are recorded in [Stage 1B verification](SWAYIMG_STAGE1B.md). This
+preserves the imv result above and does not authorize Stage 2.
+
+The owner-approved PrtSc continuation now **passes Stage 1B** on the tested native
+Wayland environment. Three full physical matches and held-key rejection/recovery
+were recorded; the screenshot shortcut moved to Shift + PrtSc as approved. The
+final source patch adds 125/removes 3 lines across 11 files. Sixteen live Wayland
+checks and the unchanged full Relay suite (1,321 passed in 26.99 seconds) pass.
+Detailed counters, fixes and qualification limits are in the linked record.
+
+## Completed implementation after Stage 1B
+
+The owner authorized Stages 2–8, now implemented and engineering-qualified.
+[Per-stage implementation evidence](EXPERIENCE_IMPLEMENTATION.md) records the
+1,474-test final regression, 179 focused tests, 13 installed-wheel checks and the
+native Swayimg/Foot journey. Crypto/storage and real machine-action safety gates
+are unchanged. Physical input evidence and synthetic automation remain explicitly
+separate. [Run the disposable experience](../EXPERIENCE_GUIDE.md) for owner feedback.

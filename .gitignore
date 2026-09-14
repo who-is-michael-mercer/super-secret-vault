@@ -52,3 +52,6 @@ manifest.vlt
 /.agent-sync/sessions/
 /.agent-sync/*.pid
 /.agent-sync/*.lock
+
+# Owner-local experience build, disposable demo and installed qualification
+/.local/

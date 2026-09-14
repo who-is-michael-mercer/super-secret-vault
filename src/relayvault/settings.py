@@ -7,6 +7,8 @@ from pathlib import Path
 import stat
 import tempfile
 
+from .input import TERMINAL_KEYS, VIEWER_KEYS, key_name
+
 DEFAULT_WAKE = ("r", "e", "l", "a", "y", "UP", "UP", "DOWN", "LEFT", "RIGHT")
 ACTIONS = {"logout", "reboot", "shutdown", "close_terminal"}
 
@@ -51,7 +53,13 @@ def private_directory(path):
 
 def defaults():
     return dict(
-        version=1,
+        version=2,
+        image_door=None,  # Disabled until explicit image enrollment.
+        inspector_sequence=["KEY_HOME", "KEY_F8", "KEY_PGUP", "KEY_END"],
+        vault_sequence=["KEY_LEFT", "KEY_RIGHT", "KEY_F7", "KEY_HOME"],
+        sequence_timeout_seconds=5,
+        animation_speed="normal",
+        presentation="ascii",
         target=None,
         wake=list(DEFAULT_WAKE),
         effects=True,
@@ -61,11 +69,16 @@ def defaults():
 
 
 def validate(data):
+    if isinstance(data, dict) and type(data.get("version")) is int and data["version"] == 1:
+        old = {"version", "target", "wake", "effects", "auto_lock_seconds", "real_os_actions"}
+        if set(data) != old:
+            raise ValueError("Unsupported local settings.")
+        data = defaults() | data | {"version": 2}
     if (
         not isinstance(data, dict)
         or set(data) != set(defaults())
         or type(data["version"]) is not int
-        or data["version"] != 1
+        or data["version"] != 2
     ):
         raise ValueError("Unsupported local settings.")
     if data["target"] is not None and (
@@ -79,7 +92,7 @@ def validate(data):
         or any(
             not isinstance(k, str)
             or not (
-                k in {"UP", "DOWN", "LEFT", "RIGHT"}
+                key_name(k) in TERMINAL_KEYS
                 or len(k) == 1
                 and k.isascii()
                 and k.isprintable()
@@ -88,7 +101,7 @@ def validate(data):
             for k in keys
         )
     ):
-        raise ValueError("Wake must contain 1–64 ASCII characters or named arrows.")
+        raise ValueError("Wake must contain 1–64 ASCII characters or supported terminal keys.")
     timeout = data["auto_lock_seconds"]
     if (
         type(timeout) not in (int, float)
@@ -114,7 +127,44 @@ def validate(data):
         for k, v in policy["bindings"].items()
     ):
         raise ValueError("Only channel_reset can bind a fixed OS action.")
+    for field in ("inspector_sequence", "vault_sequence"):
+        sequence(data[field], TERMINAL_KEYS)
+    number(data["sequence_timeout_seconds"], 0.2, 60)
+    if data["animation_speed"] not in ("slow", "normal", "fast") or data["presentation"] not in ("ascii", "text"):
+        raise ValueError("Invalid presentation setting.")
+    door = data["image_door"]
+    if door is not None:
+        if not isinstance(door, dict) or set(door) != {
+            "carrier_path", "viewer", "binding", "region", "zoom", "tolerance", "sequence"
+        }:
+            raise ValueError("Invalid image-door policy.")
+        path = door["carrier_path"]
+        if not isinstance(path, str) or not Path(path).is_absolute() or any(ord(c) < 32 for c in path):
+            raise ValueError("Image-door path must be absolute.")
+        if door["viewer"] != "swayimg" or not isinstance(door["binding"], str) or len(door["binding"]) != 64 or any(c not in "0123456789abcdef" for c in door["binding"]):
+            raise ValueError("Invalid viewer/image binding.")
+        for field, size, low, high in (("region", 4, 0, 1000000), ("zoom", 2, .001, 1000), ("tolerance", 2, 0, .5)):
+            values = door[field]
+            if not isinstance(values, list) or len(values) != size:
+                raise ValueError("Invalid image geometry.")
+            for value in values:
+                number(value, low, high)
+        if min(door["region"][2:]) <= 0 or door["zoom"][0] > door["zoom"][1]:
+            raise ValueError("Invalid image geometry.")
+        sequence(door["sequence"], VIEWER_KEYS)
     return data
+
+
+def number(value, low, high):
+    if type(value) not in (int, float) or not low <= value <= high:
+        raise ValueError("Numeric setting outside supported range.")
+
+
+def sequence(value, supported):
+    if not isinstance(value, list) or not 1 <= len(value) <= 64 or any(
+        not isinstance(k, str) or key_name(k) not in supported for k in value
+    ):
+        raise ValueError("Sequence contains an unsupported key for this input context.")
 
 
 def load():

@@ -1,0 +1,13 @@
+{
+  "result": "passed",
+  "terminal_launches": 2,
+  "viewer_local_synthetic_sequences": 2,
+  "real_physical_sequences": 0,
+  "password_sessions": 3,
+  "store_retrieve": true,
+  "stale_rejected_and_reloaded": true,
+  "duplicate_lock_released": true,
+  "terminal_settings_restored": true,
+  "temporary_viewer_config_removed": true,
+  "seconds": 8.86
+}

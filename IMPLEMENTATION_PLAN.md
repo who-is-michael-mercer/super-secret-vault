@@ -115,11 +115,26 @@ carrier performance. No real machine action was executed during verification.
 
 ## Approved subsequent experience phase
 
+**Current authorization (2026-09-14): implement experience Stages 2–8 through final
+qualification. Swayimg is the official native Wayland/Hyprland viewer.** The owner
+approved the completed Stage 1B gate and all remaining work. Earlier authorization
+and stop statements below are historical records, superseded by this instruction.
+The original V3 stages remain complete; the crypto/storage core remains frozen.
+
+**Current status: Stages 2–8 implemented and engineering-qualified; 1,474 tests pass.**
+The disposable experience is ready for owner feedback.
+
+Current implementation tasks and per-stage evidence are tracked in
+[experience implementation](docs/verification/EXPERIENCE_IMPLEMENTATION.md).
+
+### Historical approval and qualification record
+
 The owner approved [the Relay experience plan](docs/RELAY_EXPERIENCE_PLAN.md).
 Its numbered experience stages are separate from the completed original V3 stages
 0–7 above. Preserve the original completion record and the frozen core design.
 
-**Current authorization: experience Stages 0 and 1 only, on `v3/design`.**
+**Authorization at Stage 0: experience Stages 0 and 1, including the Stage 1B
+qualification continuation below, on `v3/design`. No Stage 2 or later work.**
 Stage 0 records approval, environment and a fresh safe full-suite baseline. Stage 1
 is an isolated imv feasibility gate under `integrations/imv/`: prove viewer-local
 focus/input, loaded-file identity and rendering geometry, demonstrate a development
@@ -127,7 +142,7 @@ eligibility predicate and sequence invalidation, and test the actual keyboard.
 Do not implement Stage 2 settings/input redesign, a Relay launcher, production
 cover/animation/route changes, or any later stage without another owner instruction.
 
-Approved decisions: one supported viewer, imv with a small opt-in Relay-specific
+Original approved decisions: one supported viewer, imv with a small opt-in Relay-specific
 patch; preferred image sequence HOME, F7, END, PAUSE, PGUP, CAPSLOCK, ESC, HOME.
 INSERT is a fallback recommendation only if the actual keyboard cannot emit PAUSE.
 No global capture, `/dev/input`, desktop shortcut daemon, screen scraping, broad
@@ -153,3 +168,89 @@ Experience status: Stage 0 complete (`ca9e0fc`). Stage 1 produced a small isolat
 imv probe with passing native Wayland focus/geometry/file-identity tests, but the
 required physical-key test remains unverified. **Stage 1 does not pass the gate.**
 See its verification record; no Stage 2 or later implementation is authorized.
+
+### Stage 1B — owner-authorized Swayimg alternative qualification
+
+The owner subsequently authorized a short **Stage 1B** feasibility gate, following
+the imv physical-input evidence gap. Inspect current Swayimg Lua/source and qualify
+the complete visual-door contract under `integrations/swayimg/`. Prefer supported
+Lua APIs; estimate any narrowly necessary patch before implementing it. A small
+focus/event and decoded-file identity patch is permitted; a broad fork is not.
+This is an evaluation of the strongest alternative, not an automatic replacement
+of the approved viewer or authorization to continue the experience stages.
+
+Physically test HOME, F7, END, PRTSC, PGUP, CAPSLOCK, ESC and INSERT. Use the
+owner-approved PrtSc sequence below and distinguish press, release, repeat and
+held-before-focus behavior. Qualify geometry, focus and change resets, same-basename
+paths, rename, atomic replacement, stale display, reload and image switch. Only
+correct image + qualifying view + complete sequence may produce `ELIGIBLE`.
+All earlier privacy/core restrictions apply. No Stage 2, production integration,
+launcher, presentation, authentication, cryptography or storage work is authorized.
+Record results in [Stage 1B verification](docs/verification/SWAYIMG_STAGE1B.md) and
+stop after this gate, including on success.
+
+Initial Stage 1B status, before the PrtSc continuation: the isolated Swayimg probe passes native Wayland geometry,
+focus, decoded-file identity and partial-reset checks. Seven physical keys were
+observed; the owner reports no Pause key. The complete physical sequence and
+held-before-focus test remain unqualified. An explicit Insert fallback choice
+was requested but not applied. **Stage 1B does not yet pass the full gate.**
+
+#### Owner-approved PrtSc continuation
+
+The owner replaced Pause with **PrtSc**, then approved implementation of the
+qualification plan. The current sequence is HOME, F7, END, PRTSC, PGUP, CAPSLOCK,
+ESC, HOME; expected viewer-local Linux code for PrtSc is `KEY_SYSRQ` (99), subject
+to physical verification. Insert is a separate diagnostic key, not a substitute.
+Historical Pause results above remain evidence of the earlier attempt.
+
+The owner also approved moving the existing screenshot shortcut from bare PrtSc
+to **Shift + PrtSc** in the local Hyprland user configuration, with a backup and
+reload/error validation. Other modified-PrtSc shortcuts remain unchanged. This
+desktop shortcut relocation is the only exception to the earlier no-desktop-config
+change restriction; it adds no global Relay listener or shortcut handler.
+
+Complete two successful physical sequences on the corrected probe, initial/repeat/
+release checks, focus-loss reset and held-before-focus release gating. Record the
+actual result and stop at Stage 1B. Stage 2 and the production Relay/core remain
+outside authorization.
+
+**Current Stage 1B result: PASSES on the qualified native Wayland environment;
+Swayimg is recommended for the visual door.** The final PrtSc probe recorded three
+physical matches, actual held-key rejection after a focus change, release/repeat
+handling and a successful fresh sequence afterward. The owner confirmed status
+expiry/reappearance and the relocated screenshot shortcut. Sixteen live Wayland
+checks, ten Lua groups, six native loader groups and the unchanged 1,321-test Relay
+suite pass. The final upstream patch is 125 added / 3 removed lines across 11 files.
+See the verification record for evidence and unqualified platforms/size limits.
+All disposable viewers were closed. Stop here: this result does not authorize
+Stage 2, production integration, a launcher, or changes to the crypto/storage core.
+
+### Completed Relay experience phase — 2026-09-14
+
+The subsequently authorized experience Stages **2–8 are complete**. Earlier stop
+conditions above remain historical gate records. The original V3 stages remain
+complete and their cryptographic/storage design has not changed.
+
+Implemented terminal states:
+`COVER -> VAULT_BUILD -> VAULT_WAIT -> VAULT_FADE -> ROUTE -> AUTHENTICATING -> UNLOCKED`.
+The image-view lifecycle is outside this enum, in an explicitly launched Swayimg
+process with a scoped parent and private inherited request socket. Swayimg is the
+official native Wayland/Hyprland target; the production pin/patch is under
+`integrations/swayimg/`. No desktop listener, service, shell route or fake 2FA.
+
+Local settings v2, both hidden terminal sequences, real PNG inspector, scalable
+construction/hold/dissolve, fixed fictional topology and real password boundary
+are implemented. The route is `peel`, `follow 3`, `open`; maintenance remains an
+independent password-authenticated entry. All ritual states are concealment or
+presentation. Password and unchanged encryption provide actual protection.
+
+Final regression: **1,474 passed in 86.31s**. Focused experience: **179 passed**.
+Fresh wheel: **13 installed checks**. Final native journey: two real Foot launches,
+three password sessions, store/retrieve, lock/reopen and stale-image/reload checks,
+with explicitly synthetic viewer-local/PTY test input. Physical image keys retain
+Stage 1B's owner qualification. Subjective owner feedback is now invited.
+
+Detailed per-stage tasks, design decisions, failures/fixes, test results and limits:
+[implementation verification](docs/verification/EXPERIENCE_IMPLEMENTATION.md).
+Immediate runnable demo, setup and full owner walkthrough:
+[experience guide](docs/EXPERIENCE_GUIDE.md).

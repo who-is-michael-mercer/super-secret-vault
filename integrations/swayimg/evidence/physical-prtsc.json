@@ -1,0 +1,167 @@
+{
+  "upstream_commit": "7e7590a19ab5e93f1272ecb810e47f4d8a163549",
+  "sequence": [
+    "HOME",
+    "F7",
+    "END",
+    "PRTSC",
+    "PGUP",
+    "CAPSLOCK",
+    "ESC",
+    "HOME"
+  ],
+  "prtsc_linux_code": 99,
+  "physical_input": true,
+  "synthetic_input": false,
+  "owner_confirmations": {
+    "eligible_appears_expires_reappears": "yeaj it worked",
+    "held_key_rejection_recovery_and_screenshot_shortcut": "it all works"
+  },
+  "screenshot_shortcut": "SHIFT + PRINT",
+  "snapshot": {
+    "blocked": {
+      "held": 1
+    },
+    "counts": {
+      "CAPSLOCK": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "END": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "ESC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "F7": {
+        "press": 5,
+        "release": 5,
+        "repeat_count": 0
+      },
+      "HOME": {
+        "press": 8,
+        "release": 8,
+        "repeat_count": 25
+      },
+      "PGUP": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "PRTSC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      }
+    },
+    "eligible": false,
+    "focus_enters": 6,
+    "focus_leaves": 6,
+    "focused": false,
+    "held_entries": 1,
+    "keymaps": 13,
+    "matches": 3,
+    "pose": {
+      "current": true,
+      "generation": 1,
+      "height": 600,
+      "origin": "42:14390:8962:1789322285:969769599:1789322285:969769599",
+      "origin_path": "/tmp/relay-swayimg-prtsc-final/grid.png",
+      "original": true,
+      "path": "/tmp/relay-swayimg-prtsc-final/grid.png",
+      "scale": 1.0,
+      "width": 800,
+      "window_height": 498,
+      "window_width": 937,
+      "x": 68,
+      "y": -61
+    },
+    "prefix": 0,
+    "redraws": 16,
+    "resets": {
+      "change": 3,
+      "timeout": 2
+    },
+    "viewer": "swayimg-stage1b",
+    "visual": true
+  },
+  "last_success": {
+    "blocked": {
+      "held": 1
+    },
+    "counts": {
+      "CAPSLOCK": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "END": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "ESC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "F7": {
+        "press": 5,
+        "release": 5,
+        "repeat_count": 0
+      },
+      "HOME": {
+        "press": 8,
+        "release": 7,
+        "repeat_count": 25
+      },
+      "PGUP": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "PRTSC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      }
+    },
+    "eligible": true,
+    "focus_enters": 5,
+    "focus_leaves": 4,
+    "focused": true,
+    "held_entries": 1,
+    "keymaps": 9,
+    "matches": 3,
+    "pose": {
+      "current": true,
+      "generation": 1,
+      "height": 600,
+      "origin": "42:14390:8962:1789322285:969769599:1789322285:969769599",
+      "origin_path": "/tmp/relay-swayimg-prtsc-final/grid.png",
+      "original": true,
+      "path": "/tmp/relay-swayimg-prtsc-final/grid.png",
+      "scale": 1.0,
+      "width": 800,
+      "window_height": 498,
+      "window_width": 937,
+      "x": 68,
+      "y": -61
+    },
+    "prefix": 0,
+    "redraws": 14,
+    "resets": {
+      "change": 2,
+      "timeout": 2
+    },
+    "viewer": "swayimg-stage1b",
+    "visual": true
+  },
+  "insert_note": "No Insert event in this final run; earlier Stage 1B physical-first-run.json records 4 presses and 4 releases. Insert is not in the selected sequence.",
+  "qualification": "PASS on current native Wayland/Hyprland environment; development PNG profile only"
+}

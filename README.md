@@ -1,33 +1,67 @@
 # Super Secret Vault — Relay V3
 
-A local encrypted vault concealed behind a dormant terminal interface. An ordinary
-PNG can carry the encrypted vault and still display its original picture.
-The private access procedure is the door. Your password and encryption are the lock.
+An ordinary PNG carries a personal encrypted vault. The supported Swayimg opens
+that picture normally; a particular image pose and physical key sequence open a
+quiet file inspector. Two hidden terminal sequences construct a large ASCII vault,
+then dissolve it into a small fictional terminal route.
 
-Linux, Python 3.12 or newer. Install and run from this checkout:
+Image pose, sequences and the route are **concealment only**. Password authentication
+and encryption protect the actual vault. No global input capture or Relay daemon.
+The visual door targets **Arch Linux / Hyprland / native Wayland / patched Swayimg**;
+Foot is the qualified terminal. Maintenance works independently of the ritual.
+
+## Try the ready-to-run demo
+
+```sh
+.venv/bin/python scripts/experience_demo.py
+```
+
+Public disposable-demo password: **13001300**. The demo uses its own local home and
+carrier under `.local/demo/`; keep real private material out of it. Follow the
+[complete walkthrough](docs/EXPERIENCE_GUIDE.md) for every key sequence, file
+operations, tuning, maintenance, setup and feedback targets.
+
+## Install and open an image
+
+Python 3.12+ and the build libraries listed in
+[the Swayimg setup guide](integrations/swayimg/README.md) are required. From this checkout:
 
 ```sh
 python -m venv .venv
 . .venv/bin/activate
-python -m pip install '.[dev]'
+python -m pip install -e '.[dev]' meson==1.12.0 ninja==1.13.2
+PATH="$PWD/.venv/bin:$PATH" python integrations/swayimg/build.py .local/swayimg
 relay init ~/Pictures/quiet.png --image ~/Pictures/original.png
-relay open ~/Pictures/quiet.png
+relay door enroll ~/Pictures/quiet.png
+relay view --viewer "$PWD/.local/swayimg/build/swayimg"
 ```
 
-Use a static PNG as the source. Creation writes a new file and never overwrites
-an existing image. JPEG conversion, animated PNGs and other carrier formats are
-not supported. The carrier is a complete, portable vault; no sidecar is needed.
+Reuse `.local/swayimg` if already built; the build script requires a new destination.
+Nothing replaces the system viewer, adds file associations, installs a service, or
+requires root. Use a static PNG. Creation never overwrites an existing file. The
+carrier remains a complete, portable vault without a required sidecar.
 
-The initial screen has no prompt. Type the default wake sequence without Enter:
+## The entrance
 
-**r e l a y ↑ ↑ ↓ ← →**
+1. In Swayimg, press `1` for 100% scale. Default enrollment targets the central
+   10% rectangle, near the center of the window, at 90–110% scale. `h j k l` pan;
+   `z`/`x` zoom; `r` resets the view; `o` reloads; `q` closes the viewer.
+2. Tap and release **Home → F7 → End → PrtSc → PgUp → Caps Lock → Esc → Home**.
+   A wrong pose or sequence does nothing. Bare PrtSc must reach Swayimg; screenshots
+   on the qualified owner machine already use **Shift+PrtSc**. Caps Lock still toggles.
+3. The inspector has no prompt. Enter **Home → F8 → PgUp → End**, without Enter.
+4. Let the vault assemble. At the silent completed vault, enter
+   **Left → Right → F7 → Home**, without Enter.
+5. After it dissolves, enter `peel`, then `follow 3`, then `open`, each with Enter.
+6. The screen changes to **LOCAL VAULT / Password authentication required**.
+   Enter the real password. This is the authentication boundary.
 
-At the revealed prompt, enter `attach 13`, then `unlock`. Enter your actual vault
-password at the password prompt. The learned route has two commands. Optional
-`ls`, `cat interfaces`, `status` and `attach diagnostics` inspect fixed fictional
-resources; this interface cannot execute shell commands or browse your machine.
-`back`, `sleep` and `exit` return, sleep or disconnect. `reset channel` invokes a
-fictional incident and can invoke a separately armed local machine action.
+The route's `ls`, `cat layers`, `inspect 3`, `trace`, `probe`, `status`,
+`follow service`, `back` and `knock` inspect only fixed fictional resources.
+They cannot execute shell commands, inspect the environment or browse your files.
+`peel` is optional once the route is memorized. `sleep` returns to inspection;
+`exit` disconnects. `reset channel` retains the existing separately gated incident
+policy; the image-door launch never arms real machine actions.
 
 After unlocking, `help` lists:
 
@@ -50,19 +84,34 @@ files are outside vault encryption. Removal does not securely erase backups.
 
 ```sh
 relay configure --target ~/Pictures/quiet.png
-relay configure --wake r e l a y UP UP DOWN LEFT RIGHT
-relay configure --reset-wake
+relay configure --inspector-sequence KEY_HOME KEY_F8 KEY_PGUP KEY_END
+relay configure --vault-sequence KEY_LEFT KEY_RIGHT KEY_F7 KEY_HOME
+relay configure --animation-speed fast
+relay configure --presentation text
+relay door disable
 relay configure --effects off --idle 300
 relay maintenance ~/Pictures/quiet.png
 ```
 
-A configured target lets `relay` start its cover directly. Wake, effects, idle
-settings and OS permissions are local, in `~/.relayvault/preferences.json`.
+A configured target lets `relay` start its inspector directly. `relay open IMAGE`
+is also a deliberate way to test the terminal ritual without the visual door.
+Presentation, enrollment, sequences, effects, idle settings and OS permissions are
+local, in `~/.relayvault/preferences.json` (private settings version 2). Version 1
+migrates without enabling the door or changing its OS policy. The old `wake` remains
+available through `relay open IMAGE --legacy-wake`; it replaces only the first
+terminal sequence. Named terminal sequences reject Caps Lock, Print, Pause and
+modifiers because ordinary terminal protocols cannot deliver them reliably.
 `RELAY_HOME` overrides that directory; `VAULTGAME_HOME` is a deprecated fallback.
 `python -m relayvault` and, for one release, `python -m vaultgame` also work.
 
 Maintenance skips the private procedure and asks directly for the password.
-The wake sequence is not authentication and can be reset without the password.
+Hidden sequences are not authentication and can be reset without the password.
+Enrollment binds ordinary PNG bytes rather than a permanent inode. After storing or
+renaming a protected file, the carrier is atomically replaced: reload Swayimg with
+`o` before using the visual door again. Rename the carrier or change its ordinary
+image bytes only with deliberate re-enrollment. Symlink/hardlink aliases are refused.
+Geometry overrides: `relay door enroll IMAGE --region X Y W H --zoom MIN MAX
+--tolerance X Y`. Tolerance uses fractions of window size, not exact pixels.
 If local preferences are damaged, select a fresh `RELAY_HOME` for recovery.
 Three failed authentication attempts cause a local 30-second backoff, including
 maintenance. This does not constrain offline password guessing.
@@ -188,3 +237,7 @@ production crypto, codec, commits, migration, PNG and real pseudo-terminal CLI.
 The implementation stages are in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 Measured decoder compatibility and release checks are in
 [docs/verification](docs/verification/BASELINE.md).
+
+Experience verification: **1,474 tests passed**, 179 focused checks, 13 fresh-wheel
+checks and the native Swayimg/Foot journey. Detailed evidence and test-driver limits
+are in [the stage record](docs/verification/EXPERIENCE_IMPLEMENTATION.md).

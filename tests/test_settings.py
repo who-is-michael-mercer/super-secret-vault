@@ -14,7 +14,7 @@ def test_home_precedence_and_roundtrip(tmp_path, monkeypatch):
     assert (settings.home() / "preferences.json").stat().st_mode & 0o777 == 0o600
 
 
-@pytest.mark.parametrize("wake", [[], ["ESC"], ["\n"], ["x"] * 65])
+@pytest.mark.parametrize("wake", [[], ["KEY_CAPSLOCK"], ["\n"], ["x"] * 65])
 def test_bad_wake(wake):
     with pytest.raises(ValueError):
         settings.validate(settings.defaults() | {"wake": wake})

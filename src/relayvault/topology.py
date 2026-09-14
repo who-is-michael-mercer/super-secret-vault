@@ -1,21 +1,29 @@
-"""Fixed local pseudo-resources. Never maps to host paths or a shell."""
+"""Fixed fictional resources. These identifiers never resolve to host paths."""
 
+INTRO = 'relay / local transport\nroute table retained\n'
+LAYERS = '''layer 0   image surface       intact
+layer 1   carrier framing     retained
+layer 2   service margin      not advertised
+layer 3   local endpoint      sealed'''
 RESOURCES = {
-    "link": {
-        "interfaces": "13  local control\ndiagnostics  retained telemetry",
-        "link.conf": "transport=local\nattach=13",
+    'media': {
+        'layers': LAYERS,
+        'carrier.note': 'surface: retained\nroute: local\nexternal connections: none',
+        'service': 'retained reports\nroute: follow service',
     },
-    "control": {
-        "control": "state=sealed\noperation=unlock",
-        "driver": "sealctl\nidentity=external",
+    '13': {
+        'endpoint': 'channel: 13\nstate: sealed\noperation: open',
+        'receipt': 'delivery: local\nforwarding address: none',
+        'policy': 'The route ends here. Access is a separate matter.',
     },
-    "diagnostics": {
-        "relay.log": "13: retained\nlink: idle\ncontrol: detached",
-        "telemetry": "rx=0000\ntx=0000\nclock=local",
+    'service': {
+        'inspection.log': 'surface retained\nchannel 13 present\nno forwarding requested',
+        'docket': 'one endpoint\nno operator directory\ncomplaints retained nowhere',
     },
 }
-PROMPTS = {
-    "link": "relay0:/link> ",
-    "control": "sealctl:/control> ",
-    "diagnostics": "relay0:/diag> ",
+PROMPTS = {'media':'relay:/media> ', '13':'relay:/13> ', 'service':'relay:/service> '}
+STATUS = {
+    'media':'transport: local\nchannel: unselected',
+    '13':'transport: local\nchannel: 13\nendpoint: sealed',
+    'service':'transport: local\nreports: retained',
 }

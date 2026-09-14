@@ -1,14 +1,39 @@
 # Relay: the image doorway and terminal experience
 
-Status: **approved design; only experience Stages 0 and 1 authorized**.
+Status: **implemented through Stage 8 and engineering-qualified (2026-09-14)**.
+The complete experience is ready for owner testing and subjective feedback.
+Swayimg is the official viewer for Arch Linux / Hyprland / native Wayland.
+The owner approved the full remaining experience after Stage 1B passed.
+Current image sequence: `KEY_HOME KEY_F7 KEY_END KEY_PRINT KEY_PGUP
+KEY_CAPSLOCK KEY_ESC KEY_HOME`. Relay `KEY_PRINT` names physical PrtSc
+(Linux `KEY_SYSRQ`, 99), never Linux AC Print (210).
+Terminal sequences: `KEY_HOME KEY_F8 KEY_PGUP KEY_END` and
+`KEY_LEFT KEY_RIGHT KEY_F7 KEY_HOME`. These are now approved defaults.
+See [implementation tracking](verification/EXPERIENCE_IMPLEMENTATION.md).
+The original research/authorization notes below are preserved as history;
+the current authorization supersedes their earlier stop conditions.
 
-Owner approval: imv with a small Relay-specific integration patch; preferred image
-sequence `KEY_HOME KEY_F7 KEY_END KEY_PAUSE KEY_PGUP KEY_CAPSLOCK KEY_ESC KEY_HOME`.
-`KEY_INSERT` is a fallback recommendation only if the actual keyboard lacks Pause.
+Original viewer approval: imv with a small Relay-specific integration patch;
+the owner subsequently authorized Swayimg qualification under Stage 1B. Current
+owner-selected image sequence: `KEY_HOME KEY_F7 KEY_END KEY_SYSRQ KEY_PGUP
+KEY_CAPSLOCK KEY_ESC KEY_HOME`, with `KEY_SYSRQ` labeled **PrtSc**. This supersedes
+the original Pause choice because the owner has no Pause key. Insert remains a
+separate diagnostic key. The owner approved moving local screenshots from bare
+PrtSc to Shift + PrtSc; no global Relay binding is added. Earlier Pause examples
+below are historical research, not the currently selected sequence.
 No global input capture, input-device monitoring, desktop polling/scraping or
 persistent Relay service. Keep the crypto/storage core intact. Password is real
 authentication; hardware authentication is deferred. Stop after the Stage 1 gate.
 The two later terminal sequences and presentation defaults remain design proposals.
+
+Stage 1B outcome: **Swayimg passes the native Wayland qualification with PrtSc and
+is recommended for the visual door.** Its final development patch is 125 added /
+3 removed lines across 11 upstream files. See
+[Stage 1B evidence](verification/SWAYIMG_STAGE1B.md) for the three actual physical
+matches, held-key rejection, geometry/identity tests and remaining profile limits.
+The imv-specific sections below preserve the original approved design history;
+the current qualification result supersedes that viewer recommendation. No Stage 2
+or later implementation is authorized by this result.
 
 Stage 1 research correction: the earlier GitHub source pin below is an archived
 2021 tree. The isolated probe uses active SourceHut imv v5.0.1 at
@@ -869,15 +894,17 @@ they do not qualify an actual viewer integration.
 
 ## 12. Ordered implementation stages
 
-Review and the authoritative-plan amendment authorize **Stages 0 and 1 only**.
-Do not begin Stage 2 or later without another instruction, even if Stage 1 passes.
+The original review authorized Stages 0 and 1; the owner subsequently authorized
+all remaining Stages 2–8 after Stage 1B passed. The implemented viewer is Swayimg.
+See the implementation verification record for completed subtasks and design
+adjustments; this table preserves the ordered experience goals.
 
 | Stage | Goal and likely files | Tests | Completion criteria / dependencies |
 | --- | --- | --- | --- |
 | 0. Accept scope and establish baseline | Amend `IMPLEMENTATION_PLAN.md`; retain this reviewed plan; add experience verification record | Full existing suite and safe-execution audit | Accepted viewer-maintenance tradeoff, sequence policy and untouched-core boundary; no unresolved baseline failures |
 | 1. Qualify viewer observations | Disposable imv patch/probe under `integrations/imv/`; native backend hooks, load identity and geometry | Isolated viewer harness for focus, raw keys, repeat, path reload, transforms and DPI; no real Relay launch | Demonstrate all required observations on Wayland; qualify X11 separately. Pin revision, size/review patch, prove source-generation binding. Depends on 0; stop and revise design if unsafe/too large |
 | 2. Extend tokens and local settings | `input.py`, `settings.py`, configure handling in `main.py`; shared declarative matcher cases | Decoder/matcher/settings tests, PTYs, v1 migration/policy preservation | Rich named keys, explicit TTY capability rejection, old wake preserved, door remains disabled. Depends on 1 |
-| 3. Ship scoped image match and launcher | `integrations/imv/`, small `door.py`, CLI precondition handling; install/disable documentation | Positive/negative geometry/file cases, multi-window/replacement/focus races, recorded argv/launch failures, no shell/network/input-device access | Correct visual state is necessary for a viewer launch; exactly one terminal request; silent failures; no daemon. Depends on 2 and platform qualification |
+| 3. Ship scoped image match and launcher | `integrations/swayimg/`, small `door.py`, CLI precondition handling; install/disable documentation | Positive/negative geometry/file cases, multi-window/replacement/focus races, recorded argv/launch failures, no shell/network/input-device access | Correct visual state is necessary for a viewer launch; exactly one terminal request; silent failures; no daemon. Depends on 2 and platform qualification |
 | 4. Replace inspector cover | `image_info.py`, `cover.py`, narrow `main.py` integration | Public PNG metadata/CRC/fuzzed bounds, no disclosure, scan cancellation, narrow/large/non-TTY | Honest real image fields; no capsule interpretation; responsive cover with no prompt. Depends on 3 |
 | 5. Add terminal states and construction/hold | `access.py`, `main.py`, `vault_scene.py`, minimal rendering methods in `terminal.py` | Deterministic build, second sequence, state drains, resize/tiny layout, interruption/effects-off PTYs | Full-size assembled vault reaches silent hold; one input owner; no accidental advancement. Depends on 4 |
 | 6. Final hidden input and dissolve | Same presentation modules, `input.py` only if a tested gap appears | Final sequence, reverse groups, frame timing, mid-fade resize, queued input, resume | Vault dissolves into route; controls restored; effects-off preserves boundaries. Depends on 5 |

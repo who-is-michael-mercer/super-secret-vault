@@ -4,12 +4,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import settings, cover, incidents
+from . import settings, cover, incidents, vault_scene
 from .access import AccessController, AccessState
 from .auth import RetryPolicy, BackoffError
 from .input import TTYInput, WakeMatcher, InputTimeout
 from .parser import parse_command, CommandParseError
 from .terminal import Terminal
+from .topology import INTRO
 from .vault import capsule, crypto, store
 from .vault.session import VaultSession, AuthenticationError, VaultLockedError
 from .migration import migrate
@@ -141,7 +142,7 @@ def vault_loop(session, keyboard, terminal):
             terminal.print("operation refused: " + cover.display(error))
 
 
-def run_application(path, config, *, maintenance=False, armed=False):
+def run_application(path, config, *, maintenance=False, armed=False, legacy_wake=False):
     terminal = Terminal(effects=config["effects"])
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         if maintenance:
@@ -154,8 +155,9 @@ def run_application(path, config, *, maintenance=False, armed=False):
             if state == AccessState.COVER:
                 keyboard.boundary()
                 clear(keyboard)
-                cover.render(terminal, path)
-                matcher = WakeMatcher(config["wake"])
+                inspection = cover.snapshot(path)
+                cover.render(terminal, path, data=inspection)
+                matcher = WakeMatcher(config["wake"] if legacy_wake else config["inspector_sequence"], config["sequence_timeout_seconds"])
                 while True:
                     key = keyboard.poll()
                     if key is None:
@@ -163,16 +165,24 @@ def run_application(path, config, *, maintenance=False, armed=False):
                     if key.kind in {"RESIZE", "RESUME"}:
                         matcher.reset()
                         clear(keyboard)
-                        cover.render(terminal, path)
+                        keyboard.boundary()
+                        cover.render(terminal, path, data=inspection)
                         continue
                     if matcher.feed(key):
                         break
-                state = AccessState.WAKING
-            if state == AccessState.WAKING:
+                state = AccessState.VAULT_BUILD
+            if state == AccessState.VAULT_BUILD:
+                vault_scene.build(keyboard, config)
+                state = AccessState.VAULT_WAIT
+            if state == AccessState.VAULT_WAIT:
+                vault_scene.hold(keyboard, config)
+                state = AccessState.VAULT_FADE
+            if state == AccessState.VAULT_FADE:
+                vault_scene.dissolve(keyboard, config)
                 clear(keyboard)
-                terminal.print("link: synchronizing")
-                keyboard.transition(config["effects"])
+                keyboard.boundary()
                 controller = AccessController()
+                terminal.print(INTRO)
                 state = AccessState.ROUTE
             if state == AccessState.ROUTE:
                 try:
@@ -205,6 +215,9 @@ def run_application(path, config, *, maintenance=False, armed=False):
                     terminal.print("source: unavailable")
                     state = AccessState.COVER
                     continue
+                keyboard.boundary()
+                clear(keyboard)
+                terminal.print("LOCAL VAULT\n\nPassword authentication required.\n")
                 session = None
                 try:
                     session = authenticate(path, keyboard, terminal, config)
@@ -221,13 +234,22 @@ def run_application(path, config, *, maintenance=False, armed=False):
                         outcome = vault_loop(session, keyboard, terminal)
                     if outcome == "exit" or maintenance:
                         return 0
+                except InputTimeout:
+                    if maintenance:
+                        return 130
+                    state = AccessState.COVER
+                    continue
                 except (ValueError, OSError) as error:
                     terminal.print("access: " + cover.display(error))
                     if maintenance:
                         return 1
-                    # Leave an actionable real error visible until the owner sleeps/exits.
-                    controller = AccessController()
-                    state = AccessState.ROUTE
+                    # Keep the real error visible; no fictional responses here.
+                    keyboard.boundary()
+                    try:
+                        keyboard.read_line("Return to inspection [Enter]: ")
+                    except InputTimeout:
+                        pass
+                    state = AccessState.COVER
                     continue
                 state = AccessState.COVER
 
@@ -241,10 +263,12 @@ def parser():
         action="store_true",
         help="Arm locally enabled, bound and allowlisted actions for this launch",
     )
-    commands = result.add_subparsers(dest="command")
+    commands = result.add_subparsers(dest="command", metavar="{open,maintenance,verify,init,migrate,export,backup,recover,door,view,configure}")
     for name in ("open", "maintenance", "verify"):
         sub = commands.add_parser(name)
         sub.add_argument("path")
+        if name == "open":
+            sub.add_argument("--legacy-wake", action="store_true", help="Use the preserved legacy first terminal sequence")
     for name in ("init", "migrate", "export", "backup", "recover"):
         sub = commands.add_parser(name)
         if name != "init":
@@ -252,14 +276,29 @@ def parser():
         sub.add_argument("destination")
         if name in ("init", "migrate", "export"):
             sub.add_argument("--image")
+    door = commands.add_parser("door", help="Enroll or disable the local image door")
+    door.add_argument("operation", choices=("enroll", "disable"))
+    door.add_argument("path", nargs="?")
+    door.add_argument("--region", type=float, nargs=4, metavar=("X","Y","W","H"))
+    door.add_argument("--zoom", type=float, nargs=2, metavar=("MIN","MAX"))
+    door.add_argument("--tolerance", type=float, nargs=2, metavar=("X","Y"))
+    view = commands.add_parser("view", help="Open the enrolled PNG in the qualified Swayimg")
+    view.add_argument("--viewer", required=True, help="Path to the pinned patched Swayimg binary")
+    handoff = commands.add_parser("_door-open")
+    handoff.add_argument("stamp")
     configure = commands.add_parser("configure")
     configure.add_argument("--target")
     configure.add_argument(
-        "--wake", nargs="+", help="ASCII characters or UP DOWN LEFT RIGHT"
+        "--wake", nargs="+", help="Legacy wake: ASCII characters or named terminal keys"
     )
     configure.add_argument("--reset-wake", action="store_true")
     configure.add_argument("--effects", choices=("on", "off"))
     configure.add_argument("--idle", type=float)
+    configure.add_argument("--inspector-sequence", nargs="+")
+    configure.add_argument("--vault-sequence", nargs="+")
+    configure.add_argument("--sequence-timeout", type=float)
+    configure.add_argument("--animation-speed", choices=("slow", "normal", "fast"))
+    configure.add_argument("--presentation", choices=("ascii", "text"))
     return result
 
 
@@ -267,6 +306,26 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         config = settings.load()
+        if args.command in {"door", "view", "_door-open"}:
+            from . import door
+            if args.command == "door":
+                if args.operation == "disable":
+                    config["image_door"] = None
+                elif args.path:
+                    config = door.enroll(config, args.path, args.region, args.zoom, args.tolerance)
+                else:
+                    raise ValueError("Enrollment requires a PNG path.")
+                settings.save(config)
+                print("image door: " + ("enrolled" if config["image_door"] else "disabled"))
+                return 0
+            if args.command == "view":
+                return door.view(config, args.viewer)
+            # Concealment precondition, never an authentication credential.
+            try:
+                info = door.checked(config, args.stamp)
+            except (ValueError, OSError):
+                return 0
+            return run_application(info.path, config)
         if args.command == "configure":
             changed = False
             for key, value in [
@@ -281,13 +340,18 @@ def main(argv=None):
                 ("wake", list(settings.DEFAULT_WAKE) if args.reset_wake else args.wake),
                 ("effects", args.effects == "on" if args.effects else None),
                 ("auto_lock_seconds", args.idle),
+                ("inspector_sequence", args.inspector_sequence),
+                ("vault_sequence", args.vault_sequence),
+                ("sequence_timeout_seconds", args.sequence_timeout),
+                ("animation_speed", args.animation_speed),
+                ("presentation", args.presentation),
             ]:
                 if value is not None:
                     config[key] = value
                     changed = True
             if changed:
                 settings.save(config)
-            for key in ("target", "wake", "effects", "auto_lock_seconds"):
+            for key in config:
                 print(f"{key}: {cover.display(config[key])}")
             return 0
         if args.command in (None, "open", "maintenance"):
@@ -297,6 +361,7 @@ def main(argv=None):
                 config,
                 maintenance=args.command == "maintenance",
                 armed=args.arm_os_actions,
+                legacy_wake=getattr(args, "legacy_wake", False),
             )
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise ValueError(
@@ -373,7 +438,7 @@ def main(argv=None):
                 session.export(args.destination, image=getattr(args, "image", None))
                 terminal.print("written: " + cover.display(args.destination))
                 return 0
-    except (KeyboardInterrupt, EOFError):
+    except (KeyboardInterrupt, EOFError, InputTimeout):
         return 130
     except (ValueError, OSError) as error:
         print("relay: " + cover.display(error), file=sys.stderr)

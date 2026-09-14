@@ -138,8 +138,8 @@ def test_eof_in_queued_batch_is_not_ignored(tty_pair):
 
 def test_two_commands_no_discovery_and_no_shell(tmp_path):
     controller = AccessController()
-    assert controller.handle(parse_command("attach 13")).message
-    assert controller.handle(parse_command("unlock")).action == "authenticate"
+    assert controller.handle(parse_command("follow 3")).message
+    assert controller.handle(parse_command("open")).action == "authenticate"
     for command in ("$(touch /tmp/nope)", "cat /etc/passwd", "ls /", "attach 03"):
         assert (
             controller.handle(parse_command(command)).message == "command: unavailable"

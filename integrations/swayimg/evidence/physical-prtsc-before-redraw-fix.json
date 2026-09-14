@@ -1,0 +1,137 @@
+{
+  "qualification": "PrtSc input succeeds; superseded one-line status-clear redraw fix",
+  "snapshot": {
+    "blocked": {},
+    "counts": {
+      "CAPSLOCK": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "END": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "ESC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "F7": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "HOME": {
+        "press": 9,
+        "release": 9,
+        "repeat_count": 102
+      },
+      "PGUP": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      },
+      "PRTSC": {
+        "press": 3,
+        "release": 3,
+        "repeat_count": 0
+      }
+    },
+    "eligible": false,
+    "focus_enters": 10,
+    "focus_leaves": 10,
+    "focused": false,
+    "held_entries": 2,
+    "keymaps": 32,
+    "matches": 1,
+    "pose": {
+      "current": true,
+      "generation": 1,
+      "height": 600,
+      "origin": "42:14024:8962:1789321909:101378570:1789321909:101378570",
+      "origin_path": "/tmp/relay-swayimg-prtsc-physical/grid.png",
+      "original": true,
+      "path": "/tmp/relay-swayimg-prtsc-physical/grid.png",
+      "scale": 1.0,
+      "width": 800,
+      "window_height": 498,
+      "window_width": 937,
+      "x": 68,
+      "y": -51
+    },
+    "prefix": 0,
+    "resets": {
+      "change": 4
+    },
+    "viewer": "swayimg-stage1b",
+    "visual": true
+  },
+  "last_success": {
+    "blocked": {},
+    "counts": {
+      "CAPSLOCK": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "END": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "ESC": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "F7": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "HOME": {
+        "press": 2,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "PGUP": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      },
+      "PRTSC": {
+        "press": 1,
+        "release": 1,
+        "repeat_count": 0
+      }
+    },
+    "eligible": true,
+    "focus_enters": 2,
+    "focus_leaves": 1,
+    "focused": true,
+    "held_entries": 0,
+    "keymaps": 8,
+    "matches": 1,
+    "pose": {
+      "current": true,
+      "generation": 1,
+      "height": 600,
+      "origin": "42:14024:8962:1789321909:101378570:1789321909:101378570",
+      "origin_path": "/tmp/relay-swayimg-prtsc-physical/grid.png",
+      "original": true,
+      "path": "/tmp/relay-swayimg-prtsc-physical/grid.png",
+      "scale": 1.0,
+      "width": 800,
+      "window_height": 498,
+      "window_width": 937,
+      "x": 68,
+      "y": -51
+    },
+    "prefix": 0,
+    "resets": {},
+    "viewer": "swayimg-stage1b",
+    "visual": true
+  }
+}

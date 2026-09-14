@@ -4,6 +4,7 @@ import select
 import subprocess
 import sys
 import time
+import termios
 from pathlib import Path
 import pytest
 from relayvault.vault import capsule, store
@@ -13,6 +14,7 @@ from relayvault import main, settings
 class Process:
     def __init__(self, args, home, *, module="relayvault", python=None, env=None):
         self.master, slave = pty.openpty()
+        self.original_termios = termios.tcgetattr(slave)
         self.data = b""
         environment = os.environ | {
             "RELAY_HOME": str(home),
@@ -53,12 +55,15 @@ class Process:
 
     def finish(self, status=0):
         assert self.process.wait(timeout=8) == status
+        assert termios.tcgetattr(self.master) == self.original_termios
 
     def close(self):
         if self.process.poll() is None:
             self.process.kill()
             self.process.wait()
-        os.close(self.master)
+        if self.master is not None:
+            os.close(self.master)
+            self.master = None
 
     def __enter__(self):
         return self
@@ -86,12 +91,15 @@ def test_real_dormant_wake_two_command_auth_lock(vault):
             assert absent not in output
         app.send("wrong")
         time.sleep(0.03)
-        app.send(b"relay\x1b[A\x1b[A\x1b[B\x1b[D\x1b[C")
-        output = app.wait_for("relay0:/link> ")
+        app.send(b"\x1b[H\x1b[19~\x1b[5~\x1b[F")
+        app.wait_for("R / 13")
+        time.sleep(.3)  # Finish the final plate and boundary drain.
+        app.send(b"\x1b[D\x1b[C\x1b[18~\x1b[H")
+        output = app.wait_for("relay:/media> ")
         assert b"wrong" not in output
-        app.send("attach 13\r")
-        app.wait_for("sealctl:/control> ")
-        app.send("unlock\r")
+        app.send("follow 3\r")
+        app.wait_for("relay:/13> ")
+        app.send("open\r")
         app.wait_for("password: ")
         app.send("CLI-password\r")
         output = app.wait_for("vault0:/data> ")
@@ -185,11 +193,14 @@ def test_idle_timeout_clears_without_keypress(vault):
     settings.save(config)
     with Process(["open", str(path)], home) as app:
         app.wait_for("extent")
-        app.send(b"relay\x1b[A\x1b[A\x1b[B\x1b[D\x1b[C")
-        app.wait_for("relay0:/link> ")
-        app.send("attach 13\r")
-        app.wait_for("sealctl:/control> ")
-        app.send("unlock\r")
+        app.send(b"\x1b[H\x1b[19~\x1b[5~\x1b[F")
+        app.wait_for("R / 13")
+        time.sleep(.3)  # Finish the final plate and boundary drain.
+        app.send(b"\x1b[D\x1b[C\x1b[18~\x1b[H")
+        app.wait_for("relay:/media> ")
+        app.send("follow 3\r")
+        app.wait_for("relay:/13> ")
+        app.send("open\r")
         app.wait_for("password: ")
         app.send("CLI-password\r")
         app.wait_for("vault0:/data> ")
@@ -206,8 +217,25 @@ def test_suspend_resume_and_signal_exit_restore_terminal(vault):
         app.wait_for("extent")
         app.process.send_signal(signal.SIGTSTP)
         app.wait_for(b"\x1b[?1049l")
+        _, stopped = os.waitpid(app.process.pid, os.WUNTRACED)
+        assert os.WIFSTOPPED(stopped)
         app.process.send_signal(signal.SIGCONT)
         app.wait_for("extent")
         app.process.send_signal(signal.SIGTERM)
         app.wait_for(b"\x1b[?1049l")
         app.finish(130)
+
+
+def test_suspended_password_entry_closes_cleanly(vault):
+    import signal
+    path,home=vault
+    with Process(['maintenance',str(path)],home) as app:
+        app.wait_for('password: ')
+        app.send('partial-password')
+        app.process.send_signal(signal.SIGTSTP)
+        app.wait_for(b'\x1b[?2004l')
+        _,stopped=os.waitpid(app.process.pid,os.WUNTRACED)
+        assert os.WIFSTOPPED(stopped)
+        app.process.send_signal(signal.SIGCONT)
+        app.finish(130)
+        assert b'partial-password' not in app.data

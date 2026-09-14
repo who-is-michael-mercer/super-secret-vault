@@ -3,6 +3,7 @@
 from collections import deque
 from dataclasses import dataclass
 import os
+import errno
 import select
 import signal
 import sys
@@ -11,6 +12,21 @@ import threading
 import time
 import tty
 import unicodedata
+
+
+TERMINAL_KEYS = frozenset({"HOME", "END", "PGUP", "PGDN", "INSERT", "DELETE",
+                           "ESC", "UP", "DOWN", "LEFT", "RIGHT"} |
+                          {f"F{i}" for i in range(1, 13)})
+# Product names, delivered as raw wl_keyboard codes by the viewer, not evdev.
+VIEWER_KEYS = {"HOME": 102, "END": 107, "PGUP": 104, "PGDN": 109,
+               "INSERT": 110, "DELETE": 111, "ESC": 1, "CAPSLOCK": 58,
+               "PRINT": 99, "PAUSE": 119, "UP": 103, "DOWN": 108,
+               "LEFT": 105, "RIGHT": 106,
+               **{f"F{i}": 58+i for i in range(1, 11)}, "F11": 87, "F12": 88}
+
+
+def key_name(value):
+    return value.removeprefix("KEY_")
 
 
 @dataclass(frozen=True)
@@ -30,6 +46,14 @@ class KeyDecoder:
         b"\x1bOC": "RIGHT",
         b"\x1bOD": "LEFT",
         b"\x1b[200~": "PASTE_START",
+        b"\x1b[H": "HOME", b"\x1bOH": "HOME", b"\x1b[1~": "HOME",
+        b"\x1b[7~": "HOME", b"\x1b[F": "END", b"\x1bOF": "END",
+        b"\x1b[4~": "END", b"\x1b[8~": "END",
+        b"\x1b[2~": "INSERT", b"\x1b[3~": "DELETE",
+        b"\x1b[5~": "PGUP", b"\x1b[6~": "PGDN",
+        **{b"\x1bO" + bytes([79+i]): f"F{i}" for i in range(1, 5)},
+        **{f"\x1b[{n}~".encode(): f"F{i}" for i, n in enumerate(
+            (11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 23, 24), 1)},
     }
 
     def __init__(self):
@@ -108,8 +132,15 @@ class KeyDecoder:
                             self.pending_since = now
                         break
                     self.buffer = self.buffer[end + 1 :]
+                elif self.buffer.startswith(b"\x1bO"):
+                    # Unknown SS3 is one event; never leak its final byte.
+                    if len(self.buffer) < 3:
+                        if self.pending_since is None:
+                            self.pending_since = now
+                        break
+                    self.buffer = self.buffer[3:]
                 else:
-                    self.buffer = self.buffer[1:]
+                    self.buffer = self.buffer[2:]
                 events.append(Key("UNKNOWN"))
                 self.pending_since = None
                 continue
@@ -165,15 +196,16 @@ class KeyDecoder:
             and self.pending_since is not None
             and now - self.pending_since >= 0.08
         ):
+            kind = "ESC" if self.buffer == b"\x1b" else "UNKNOWN"
             self.buffer = b""
             self.pending_since = None
-            return [Key("UNKNOWN")]
+            return [Key(kind)]
         return []
 
 
 class WakeMatcher:
     def __init__(self, sequence, timeout=5):
-        self.sequence = tuple(sequence)
+        self.sequence = tuple(key_name(k) for k in sequence)
         self.timeout = timeout
         self.partial = ()
         self.last = None
@@ -186,7 +218,10 @@ class WakeMatcher:
         now = time.monotonic() if now is None else now
         if self.last is not None and now - self.last >= self.timeout:
             self.partial = ()
-        token = key.text if key.kind == "CHAR" else key.kind
+        if key.kind in {"PASTE", "PASTE_OVERFLOW", "UNKNOWN", "RESIZE", "RESUME"}:
+            self.reset()
+            return False
+        token = key.text if key.kind == "CHAR" else key_name(key.kind)
         candidate = (*self.partial, token)
         self.last = now
         for length in range(min(len(candidate), len(self.sequence)), 0, -1):
@@ -216,6 +251,8 @@ class TTYInput:
         self.handlers = {}
         self.resize = False
         self.suspended = False
+        self.stop_requested = False
+        self.lost_terminal = False
 
     def _write(self, text):
         self.output.write(text)
@@ -228,15 +265,37 @@ class TTYInput:
         termios.tcsetattr(self.fd, termios.TCSANOW, mode)
         self._write(("\x1b[?1049h" if self.alternate else "") + "\x1b[?2004h\x1b[?25l")
 
+    def _discard_lost_output(self):
+        # The TTY is already gone. Redirect this process's dead output descriptor
+        # so Python's final buffered flush cannot fail again at interpreter exit.
+        descriptor = os.open(os.devnull, os.O_WRONLY | os.O_CLOEXEC)
+        try:
+            os.dup2(descriptor, self.output.fileno())
+            self.output.flush()
+        finally:
+            os.close(descriptor)
+
     def _restore(self):
+        gone = {errno.EIO, errno.ENXIO, errno.EBADF, errno.EPIPE}
         try:
             if self.previous is not None:
                 termios.tcsetattr(self.fd, termios.TCSANOW, self.previous)
+        except (termios.error, OSError) as error:
+            if not error.args or error.args[0] not in gone:
+                raise
+            self.lost_terminal = True
         finally:
-            self._write(
-                "\x1b[0m\x1b[?25h\x1b[?2004l"
-                + ("\x1b[?1049l" if self.alternate else "")
-            )
+            try:
+                self._write(
+                    "\x1b[0m\x1b[?25h\x1b[?2004l"
+                    + ("\x1b[?1049l" if self.alternate else "")
+                )
+            except OSError as error:
+                if error.errno not in gone:
+                    raise
+                self.lost_terminal = True
+            if self.lost_terminal:
+                self._discard_lost_output()
 
     def __enter__(self):
         if not self.stream.isatty() or not self.output.isatty():
@@ -268,6 +327,8 @@ class TTYInput:
             self.handlers.clear()
             self.decoder.reset()
             self.queue.clear()
+        if self.lost_terminal:
+            raise EOFError() from None
 
     def _signal(self, sig, _):
         if sig == signal.SIGWINCH:
@@ -275,8 +336,14 @@ class TTYInput:
             return
         if sig in (signal.SIGHUP, signal.SIGTERM):
             raise EOFError()
-        # Restore before stopping; re-enter only after the process is continued.
+        # Never perform buffered I/O recursively from a Python signal handler.
+        # The next input-loop safe point restores the TTY before actually stopping.
+        self.stop_requested = True
+
+    def _suspend(self):
         self._restore()
+        if self.lost_terminal:
+            raise EOFError()
         os.kill(os.getpid(), signal.SIGSTOP)
         self._enable()
         self.boundary()
@@ -288,6 +355,9 @@ class TTYInput:
         termios.tcflush(self.fd, termios.TCIFLUSH)
 
     def poll(self, timeout=0.1):
+        if self.stop_requested:
+            self.stop_requested = False
+            self._suspend()
         if self.suspended:
             self.suspended = False
             return Key("RESUME")
@@ -406,6 +476,12 @@ class TTYInput:
                     cursor = max(0, cursor - 1)
                 elif key.kind == "RIGHT":
                     cursor = min(len(text), cursor + 1)
+                elif key.kind == "HOME":
+                    cursor = 0
+                elif key.kind == "END":
+                    cursor = len(text)
+                elif key.kind == "DELETE":
+                    text = text[:cursor] + text[cursor + 1:]
                 redraw()
         finally:
             text = ""

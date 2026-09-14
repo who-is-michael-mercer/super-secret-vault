@@ -21,3 +21,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "tests"]
+
+[tool.setuptools.package-data]
+relayvault = ["swayimg/*.lua"]

@@ -1,0 +1,25 @@
+{
+  "python": "3.14.7",
+  "kernel": "7.1.9-arch1-2",
+  "cryptography": "50.0.1",
+  "pytest": "9.1.1",
+  "session": "native Wayland / Hyprland 0.56.2",
+  "terminal": "Foot 1.27.0",
+  "viewer_commit": "7e7590a19ab5e93f1272ecb810e47f4d8a163549",
+  "viewer_version": "5.6-9-g7e7590a-dirty (intentional Relay patch)",
+  "patch_added": 195,
+  "patch_removed": 3,
+  "patch_files": 12,
+  "full_pytest": {
+    "passed": 1474,
+    "seconds": 86.31
+  },
+  "focused_pytest": {
+    "passed": 179,
+    "seconds": 59.43
+  },
+  "native_wayland_checks": 16,
+  "lua_groups": 20,
+  "native_loader_groups": 14,
+  "real_machine_actions_executed": false
+}

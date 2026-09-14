@@ -1,0 +1,36 @@
+{
+  "qualification": "corrected probe; full physical sequence not completed",
+  "snapshot": {
+    "blocked": {
+      "held": 2,
+      "visual": 3
+    },
+    "counts": {},
+    "eligible": false,
+    "focus_enters": 3,
+    "focus_leaves": 2,
+    "focused": true,
+    "held_entries": 0,
+    "keymaps": 8,
+    "matches": 0,
+    "pose": {
+      "current": true,
+      "generation": 3,
+      "height": 600,
+      "origin": "42:8800:8961:1789319363:982966015:1789319363:982966015",
+      "origin_path": "/tmp/relay-swayimg-physical3/other/grid.png",
+      "original": true,
+      "path": "/tmp/relay-swayimg-physical3/other/grid.png",
+      "scale": 1.0,
+      "width": 800,
+      "window_height": 1080,
+      "window_width": 1920,
+      "x": -168,
+      "y": 346
+    },
+    "prefix": 0,
+    "resets": {},
+    "viewer": "swayimg-stage1b",
+    "visual": false
+  }
+}
