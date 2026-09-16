@@ -1,0 +1,53 @@
+{
+  "status": "UNVERIFIED: no physical test-key events received",
+  "counts_order": [
+    "release",
+    "initial_press",
+    "repeat"
+  ],
+  "keys": {
+    "HOME": [
+      0,
+      0,
+      0
+    ],
+    "F7": [
+      0,
+      0,
+      0
+    ],
+    "END": [
+      0,
+      0,
+      0
+    ],
+    "PAUSE": [
+      0,
+      0,
+      0
+    ],
+    "PGUP": [
+      0,
+      0,
+      0
+    ],
+    "CAPSLOCK": [
+      0,
+      0,
+      0
+    ],
+    "ESC": [
+      0,
+      0,
+      0
+    ],
+    "INSERT": [
+      0,
+      0,
+      0
+    ]
+  },
+  "matches": 0,
+  "synthetic_keys_sent": false,
+  "keyboard_model": "not established"
+}

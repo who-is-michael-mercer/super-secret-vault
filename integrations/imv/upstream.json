@@ -1,0 +1,11 @@
+{
+  "url": "https://git.sr.ht/~exec64/imv",
+  "tag": "v5.0.1",
+  "revision": "bdec0e527be289e08c3a70c8719a85994d26bd4d",
+  "window_system": "wayland",
+  "decoder": "libpng",
+  "build_tools": {
+    "meson": "1.12.0",
+    "ninja": "1.13.2"
+  }
+}

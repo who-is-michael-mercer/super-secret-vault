@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from vaultgame.vault import crypto
+from relayvault.vault import crypto
 
 KEY = bytes(range(32))
 AAD = b"relayvault:v1:test-vault:manifest"

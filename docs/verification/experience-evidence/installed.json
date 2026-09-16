@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "wheel contains production Lua and legacy entry shim, no test fixtures",
+    "fresh venv imports installed package outside checkout",
+    "real PNG initialization and password confirmation",
+    "installed image enrollment and private v2 settings",
+    "inspector, both hidden inputs, animated build/fade, route, real auth",
+    "authenticated store/retrieve content round trip",
+    "lock, full ritual reopen, password secrecy and termios restoration",
+    "maintenance bypasses concealment and retains real authentication",
+    "installed backup with real password and verified encrypted material",
+    "installed recover with real password and verified encrypted material",
+    "installed verify with real password and verified encrypted material",
+    "door disable is local and explicit",
+    "installed relay executable"
+  ],
+  "count": 13,
+  "seconds": 10.8
+}

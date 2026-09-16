@@ -1,0 +1,616 @@
+diff --git i/src/backend_libpng.c w/src/backend_libpng.c
+index 980ce11..e55e46e 100644
+--- i/src/backend_libpng.c
++++ w/src/backend_libpng.c
+@@ -9,9 +9,13 @@
+ #include <string.h>
+ #include <errno.h>
+ #include <png.h>
++#include <unistd.h>
+ 
+ struct private {
+   FILE *file;
++  char *path;
++  struct stat before;
++  bool stamped;
+   png_structp png;
+   png_infop info;
+ };
+@@ -27,6 +31,7 @@ static void free_private(void *raw_private)
+   if (private->file) {
+     fclose(private->file);
+   }
++  free(private->path);
+   free(private);
+ }
+ 
+@@ -57,6 +62,9 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
+   png_read_image(private->png, rows);
+   void *raw_bmp = rows[0];
+   free(rows);
++  struct stat after;
++  bool stable = private->stamped && !fstat(fileno(private->file), &after) &&
++    relay_same_file(&private->before, &after);
+   fclose(private->file);
+   private->file = NULL;
+ 
+@@ -66,6 +74,7 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
+   bmp->height = height;
+   bmp->data = raw_bmp;
+   *image = imv_image_create_from_bitmap(bmp);
++  imv_image_set_origin(*image, private->path, &private->before, stable);
+ }
+ 
+ static const struct imv_source_vtable vtable = {
+@@ -73,9 +82,11 @@ static const struct imv_source_vtable vtable = {
+   .free = free_private
+ };
+ 
+-static enum backend_result open_file(FILE *f, struct imv_source **src)
++static enum backend_result open_file(FILE *f, const char *path, struct imv_source **src)
+ {
+-  unsigned char header[8];
++  struct stat before = {0};
++  bool stamped = path && !fstat(fileno(f), &before) && S_ISREG(before.st_mode);
++  unsigned char header[8] = {0};
+   fread(header, 1, sizeof header, f);
+   if (png_sig_cmp(header, 0, sizeof header)) {
+     fclose(f);
+@@ -84,9 +95,13 @@ static enum backend_result open_file(FILE *f, struct imv_source **src)
+ 
+   struct private *private = calloc(1, sizeof *private);
+   private->file = f;
++  private->before = before;
++  private->stamped = stamped;
++  private->path = path ? strdup(path) : NULL;
+   private->png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+   if (!private->png) {
+     fclose(private->file);
++    free(private->path);
+     free(private);
+     return BACKEND_UNSUPPORTED;
+   }
+@@ -98,6 +113,7 @@ static enum backend_result open_file(FILE *f, struct imv_source **src)
+   if (!private->info) {
+     png_destroy_read_struct(&private->png, NULL, NULL);
+     fclose(private->file);
++    free(private->path);
+     free(private);
+     return BACKEND_UNSUPPORTED;
+   }
+@@ -105,6 +121,7 @@ static enum backend_result open_file(FILE *f, struct imv_source **src)
+   if (setjmp(png_jmpbuf(private->png))) {
+     png_destroy_read_struct(&private->png, &private->info, NULL);
+     fclose(private->file);
++    free(private->path);
+     free(private);
+     return BACKEND_UNSUPPORTED;
+   }
+@@ -129,6 +146,7 @@ static enum backend_result open_file(FILE *f, struct imv_source **src)
+   if (setjmp(png_jmpbuf(private->png))) {
+     png_destroy_read_struct(&private->png, &private->info, NULL);
+     fclose(private->file);
++    free(private->path);
+     free(private);
+     return BACKEND_UNSUPPORTED;
+   }
+@@ -143,7 +161,7 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
+   if (!f) {
+     return BACKEND_BAD_PATH;
+   }
+-  return open_file(f, src);
++  return open_file(f, path, src);
+ }
+ 
+ static enum backend_result open_memory(void *data, size_t len, struct imv_source **src)
+@@ -153,7 +171,7 @@ static enum backend_result open_memory(void *data, size_t len, struct imv_source
+     imv_log(IMV_DEBUG, "libpng: fmemopen failed: %s\n", strerror(errno));
+     return BACKEND_UNSUPPORTED;
+   }
+-  return open_file(f, src);
++  return open_file(f, NULL, src);
+ }
+ 
+ const struct imv_backend imv_backend_libpng = {
+diff --git i/src/image.c w/src/image.c
+index c0b6268..5c9192c 100644
+--- i/src/image.c
++++ w/src/image.c
+@@ -3,10 +3,12 @@
+ #include "bitmap.h"
+ 
+ #include <stdlib.h>
++#include <string.h>
+ #include <assert.h>
+ #include <stdbool.h>
+ 
+ struct imv_image {
++  struct imv_origin origin;
+   enum image_type type;
+   union {
+     struct imv_bitmap *bitmap;
+@@ -57,6 +59,7 @@ void imv_image_free(struct imv_image *image)
+ #endif
+   }
+ 
++  free(image->origin.path);
+   free(image);
+ }
+ 
+@@ -112,3 +115,14 @@ RsvgHandle *imv_image_get_svg(const struct imv_image *image)
+ #endif
+ 
+ /* vim:set ts=2 sts=2 sw=2 et: */
++
++void imv_image_set_origin(struct imv_image *i, const char *path, const struct stat *s, bool stable)
++{
++  i->origin.path = path ? strdup(path) : NULL;
++  i->origin.identity = *s;
++  i->origin.stable = stable && i->origin.path;
++}
++const struct imv_origin *imv_image_origin(const struct imv_image *i)
++{
++  return i ? &i->origin : NULL;
++}
+diff --git i/src/image.h w/src/image.h
+index 825290e..faefea0 100644
+--- i/src/image.h
++++ w/src/image.h
+@@ -2,6 +2,17 @@
+ #define IMV_IMAGE_H
+ 
+ #include "bitmap.h"
++#include <sys/stat.h>
++#include <stdbool.h>
++static inline bool relay_same_file(const struct stat *a, const struct stat *b)
++{
++  return a->st_dev == b->st_dev && a->st_ino == b->st_ino &&
++    a->st_size == b->st_size && a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
++    a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
++    a->st_ctim.tv_sec == b->st_ctim.tv_sec && a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
++}
++
++struct imv_origin { char *path; struct stat identity; bool stable; };
+ 
+ #ifdef IMV_BACKEND_LIBRSVG
+ #include <librsvg/rsvg.h>
+@@ -28,6 +39,9 @@ struct imv_image *imv_image_create_from_svg(RsvgHandle *handle);
+ RsvgHandle *imv_image_get_svg(const struct imv_image *image);
+ #endif
+ 
++void imv_image_set_origin(struct imv_image *, const char *, const struct stat *, bool);
++const struct imv_origin *imv_image_origin(const struct imv_image *);
++
+ /* Cleans up an imv_image instance */
+ void imv_image_free(struct imv_image *image);
+ 
+diff --git i/src/imv.c w/src/imv.c
+index 3440d29..29f5db1 100644
+--- i/src/imv.c
++++ w/src/imv.c
+@@ -30,6 +30,7 @@
+ #include "sys/types.h"
+ #include "viewport.h"
+ #include "window.h"
++#include "relay_probe.h"
+ 
+ /* Some systems like GNU/Hurd don't define PATH_MAX */
+ #ifndef PATH_MAX
+@@ -78,6 +79,9 @@ struct internal_event {
+ };
+ 
+ struct imv {
++  struct relay_probe probe;
++  int probe_ww, probe_wh, probe_bw, probe_bh;
++  bool probe_ready;
+   /* set to true to trigger clean exit */
+   bool quit;
+ 
+@@ -199,6 +203,67 @@ struct imv {
+   size_t stdin_image_data_len;
+ };
+ 
++static double cur_time(void);
++static bool relay_test_key(int code)
++{
++  for (int i=0;i<8;++i) if (relay_codes[i]==code) return true;
++  return false;
++}
++static void probe_observe(struct imv *imv, int code, int state)
++{
++  struct relay_probe *p=&imv->probe;
++  relay_configure(p);
++  if (!p->target) return;
++  struct relay_pose s={0};
++  imv_viewport_get_offset(imv->view,&s.x,&s.y);
++  imv_viewport_get_scale(imv->view,&s.zoom);
++  imv_viewport_get_rotation(imv->view,&s.rotation);
++  imv_viewport_get_mirrored(imv->view,&s.mirror);
++  imv_window_get_framebuffer_size(imv->window,&s.bw,&s.bh);
++  s.ww=imv->probe_ww; s.wh=imv->probe_wh;
++  s.iw=imv_image_width(imv->current_image); s.ih=imv_image_height(imv->current_image);
++  s.focus=p->focus; s.generation=p->generation;
++  s.loading=!imv->probe_ready || s.bw!=imv->probe_bw || s.bh!=imv->probe_bh || imv->loading || imv->need_rescale || imv_console_is_active(imv->console) || imv->slideshow.duration != 0;
++  const struct imv_origin *o=imv_image_origin(imv->current_image);
++  struct stat current;
++  char *canonical=realpath(p->target,NULL);
++  s.file_ok=o && o->stable && o->path && canonical && !strcmp(canonical,p->target) &&
++    !strcmp(o->path,p->target) && !strcmp(imv_navigator_selection(imv->navigator),p->target) &&
++    !lstat(p->target,&current) && S_ISREG(current.st_mode) && current.st_nlink==1 &&
++    current.st_uid==getuid() && relay_same_file(&current,&o->identity);
++  free(canonical);
++  bool changed=relay_update_pose(p,&s,cur_time());
++  bool eligible=relay_eligible(p,&s);
++  if (code>=0) {
++    for (int i=0;i<8;++i) if (relay_codes[i]==code && state>=0 && state<=2) ++p->counts[i][state];
++    relay_feed(p,eligible,code,state,cur_time());
++  }
++  if (changed || (code>=0 && relay_test_key(code))) {
++    printf("{\"viewer\":\"imv-5.0.1-relay-probe\",\"pid\":%ld,\"eligible\":%s,\"focus\":%s,\"file_ok\":%s,\"generation\":%u,\"image\":[%d,%d],\"window\":[%d,%d],\"framebuffer\":[%d,%d],\"origin\":[%d,%d],\"zoom\":%.9g,\"rotation\":%.9g,\"mirror\":%s,\"prefix\":%u,\"resets\":%u,\"matches\":%u,\"loaded_inode\":%llu,\"keys\":{",
++      (long)getpid(),eligible?"true":"false",s.focus?"true":"false",s.file_ok?"true":"false",s.generation,
++      s.iw,s.ih,s.ww,s.wh,s.bw,s.bh,s.x,s.y,isfinite(s.zoom)?s.zoom:0,isfinite(s.rotation)?s.rotation:0,s.mirror?"true":"false",p->prefix,p->resets,p->matches,
++      (unsigned long long)(o?o->identity.st_ino:0));
++    for (int i=0;i<8;++i) printf("%s\"%s\":[%u,%u,%u]",i?",":"",relay_names[i],p->counts[i][0],p->counts[i][1],p->counts[i][2]);
++    printf("},\"pending_draw\":%s,\"loaded_path_hex\":\"",s.loading?"true":"false");
++    const unsigned char *path=(const unsigned char *)(o && o->path ? o->path : "");
++    for (;*path;++path) printf("%02x",*path);
++    printf("\",\"selected_path_hex\":\"");
++    path=(const unsigned char *)imv_navigator_selection(imv->navigator);
++    for (;*path;++path) printf("%02x",*path);
++    puts("\"}"); fflush(stdout);
++    char title[160];
++    snprintf(title,sizeof title,"RELAY DEVELOPMENT PROBE — %s — prefix %u/8 — no launch",eligible?"ELIGIBLE":"INELIGIBLE",p->prefix);
++    imv_window_set_title(imv->window,title);
++    if (strcmp(imv->overlay.text,title)) {
++      char *text=strdup(title);
++      if (text) {
++        free(imv->overlay.text); imv->overlay.text=text;
++        imv->overlay.enabled=true; imv->need_redraw=true;
++      }
++    }
++  }
++}
++
+ static void command_quit(struct list *args, const char *argstr, void *data);
+ static void command_pan(struct list *args, const char *argstr, void *data);
+ static void command_next(struct list *args, const char *argstr, void *data);
+@@ -442,6 +507,24 @@ static void key_handler(struct imv *imv, const struct imv_event *event)
+ static void event_handler(void *data, const struct imv_event *e)
+ {
+   struct imv *imv = data;
++  relay_configure(&imv->probe);
++  if (e->type != IMV_EVENT_RELAY_KEY && e->type != IMV_EVENT_KEYBOARD &&
++      e->type != IMV_EVENT_RELAY_FOCUS) imv->probe_ready=false;
++  if (e->type == IMV_EVENT_RELAY_FOCUS) {
++    relay_reset(&imv->probe);
++    imv->probe.focus = e->data.relay_focus;
++  }
++  if (e->type == IMV_EVENT_RESIZE) {
++    relay_reset(&imv->probe);
++    imv->probe_ww = e->data.resize.width;
++    imv->probe_wh = e->data.resize.height;
++    imv->probe_bw = e->data.resize.buffer_width;
++    imv->probe_bh = e->data.resize.buffer_height;
++  }
++  if (e->type == IMV_EVENT_RELAY_KEY) {
++    probe_observe(imv, e->data.relay_key.code, e->data.relay_key.state);
++    return;
++  }
+   switch (e->type) {
+     case IMV_EVENT_CLOSE:
+       imv->quit = true;
+@@ -457,7 +540,10 @@ static void event_handler(void *data, const struct imv_event *e)
+         break;
+       }
+     case IMV_EVENT_KEYBOARD:
+-      key_handler(imv, e);
++      if (!imv->probe.target || !relay_test_key(e->data.keyboard.scancode)) {
++        imv->probe_ready=false;
++        key_handler(imv, e);
++      }
+       break;
+     case IMV_EVENT_MOUSE_MOTION:
+       if (imv_window_get_mouse_button(imv->window, 1)) {
+@@ -491,6 +577,7 @@ static void event_handler(void *data, const struct imv_event *e)
+       break;
+   }
+ 
++  probe_observe(imv, -1, -1);
+ }
+ 
+ static bool hex_value_to_color_rgb(const char* hex, struct color_rgb* color)
+@@ -1097,6 +1184,8 @@ int imv_run(struct imv *imv)
+      * load in a while loop until the navigation stops.
+      */
+     while (imv_navigator_poll_changed(imv->navigator)) {
++      relay_reset(&imv->probe);
++      imv->probe_ready=false;
+       const char *current_path = imv_navigator_selection(imv->navigator);
+       /* check we got a path back */
+       if (strcmp("", current_path)) {
+@@ -1205,6 +1294,9 @@ int imv_run(struct imv *imv)
+       imv_window_present(imv->window);
+     }
+ 
++    imv->probe_ready=true;
++    probe_observe(imv, -1, -1);
++
+     /* sleep until we have something to do */
+     double timeout = 1.0; /* seconds */
+ 
+@@ -1295,6 +1387,8 @@ static void handle_new_image(struct imv *imv, struct imv_image *image, int frame
+     imv_image_free(imv->current_image);
+   }
+   imv->current_image = image;
++  ++imv->probe.generation;
++  relay_reset(&imv->probe);
+   imv->need_redraw = true;
+   imv->need_rescale = true;
+   imv->loading = false;
+diff --git i/src/relay_probe.h w/src/relay_probe.h
+new file mode 100644
+index 0000000..e076ae9
+--- /dev/null
++++ w/src/relay_probe.h
+@@ -0,0 +1,104 @@
++/* Development-only Relay feasibility probe. No launcher, device reads or logs.
++ * stdout contains state and aggregate counts for eight named test keys only. */
++#ifndef RELAY_PROBE_H
++#define RELAY_PROBE_H
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <linux/input-event-codes.h>
++
++
++struct relay_pose {
++  int x, y, iw, ih, ww, wh, bw, bh;
++  double zoom, rotation;
++  bool mirror, focus, file_ok, loading;
++  unsigned generation;
++};
++struct relay_probe {
++  struct relay_pose last;
++  const char *target;
++  double region[8]; /* x y w h zoom-min zoom-max x/y-tolerance */
++  bool initialized, configured, focus, have_last;
++  unsigned generation, prefix, matches, resets;
++  double last_press;
++  unsigned counts[8][3]; /* aggregate release / press / repeat */
++};
++static const int relay_codes[] = {
++  KEY_HOME, KEY_F7, KEY_END, KEY_PAUSE, KEY_PAGEUP, KEY_CAPSLOCK, KEY_ESC, KEY_INSERT
++};
++static const char *relay_names[] = {
++  "HOME", "F7", "END", "PAUSE", "PGUP", "CAPSLOCK", "ESC", "INSERT"
++};
++static const int relay_sequence[] = {
++  KEY_HOME, KEY_F7, KEY_END, KEY_PAUSE, KEY_PAGEUP, KEY_CAPSLOCK, KEY_ESC, KEY_HOME
++};
++
++static void relay_reset(struct relay_probe *p)
++{
++  if (p->prefix) ++p->resets;
++  p->prefix = 0;
++}
++/* Shared by the real viewer and contract tests; no padding-byte comparisons. */
++static bool relay_update_pose(struct relay_probe *p, const struct relay_pose *s, double now)
++{
++  const struct relay_pose *a=&p->last;
++  bool changed=!p->have_last || a->x!=s->x || a->y!=s->y || a->iw!=s->iw || a->ih!=s->ih ||
++    a->ww!=s->ww || a->wh!=s->wh || a->bw!=s->bw || a->bh!=s->bh ||
++    a->zoom!=s->zoom || a->rotation!=s->rotation || a->mirror!=s->mirror ||
++    a->focus!=s->focus || a->file_ok!=s->file_ok || a->loading!=s->loading ||
++    a->generation!=s->generation;
++  if (changed || now-p->last_press>=5) relay_reset(p);
++  p->last=*s; p->have_last=true;
++  return changed;
++}
++static bool relay_eligible(const struct relay_probe *p, const struct relay_pose *s)
++{
++  const double *r = p->region;
++  if (!p->configured || !s->focus || !s->file_ok || s->loading ||
++      s->mirror || s->rotation != 0 || !isfinite(s->zoom) ||
++      s->zoom < r[4] || s->zoom > r[5] || s->bw <= 0 || s->bh <= 0 ||
++      r[0]+r[2] > s->iw || r[1]+r[3] > s->ih) return false;
++  double x = s->x + r[0]*s->zoom, y = s->y + r[1]*s->zoom;
++  double w = r[2]*s->zoom, h = r[3]*s->zoom;
++  double visible = fmax(0, fmin(s->bw,x+w)-fmax(0,x)) *
++                   fmax(0, fmin(s->bh,y+h)-fmax(0,y));
++  return visible >= .9*w*h && fabs(x+w/2-s->bw/2.) <= r[6]*s->bw &&
++         fabs(y+h/2-s->bh/2.) <= r[7]*s->bh;
++}
++static void relay_configure(struct relay_probe *p)
++{
++  if (p->initialized) return;
++  p->initialized = true;
++  p->target = getenv("RELAY_IMV_PROBE");
++  const char *spec = getenv("RELAY_IMV_REGION");
++  if (!p->target || !spec) return;
++  char tail;
++  double *r = p->region;
++  if (sscanf(spec,"%lf %lf %lf %lf %lf %lf %lf %lf %c",
++      r,r+1,r+2,r+3,r+4,r+5,r+6,r+7,&tail) != 8) return;
++  for (int i=0;i<8;++i) if (!isfinite(r[i])) return;
++  p->configured = p->target[0]=='/' && r[0]>=0 && r[1]>=0 && r[2]>0 &&
++    r[3]>0 && r[4]>0 && r[5]>=r[4] && r[6]>=0 && r[6]<=1 && r[7]>=0 && r[7]<=1;
++}
++static void relay_feed(struct relay_probe *p, bool eligible, int code, int state, double now)
++{
++  if (!eligible || now-p->last_press >= 5) relay_reset(p);
++  if (!eligible || state != 1) return;
++  p->last_press = now;
++  int candidate[9];
++  unsigned n=p->prefix;
++  memcpy(candidate,relay_sequence,n*sizeof(int));
++  candidate[n++]=code;
++  p->prefix=0;
++  for (unsigned len=n;len>0;--len) {
++    if (!memcmp(candidate+n-len,relay_sequence,len*sizeof(int))) {
++      if (len==8) ++p->matches;
++      else p->prefix=len;
++      return;
++    }
++  }
++}
++#endif
+diff --git i/src/window.h w/src/window.h
+index 68765a7..267e332 100644
+--- i/src/window.h
++++ w/src/window.h
+@@ -7,6 +7,8 @@ struct imv_window;
+ 
+ enum imv_event_type {
+   IMV_EVENT_CLOSE,
++  IMV_EVENT_RELAY_FOCUS,
++  IMV_EVENT_RELAY_KEY,
+   IMV_EVENT_RESIZE,
+   IMV_EVENT_KEYBOARD,
+   IMV_EVENT_KEYBOARD_MODS,
+@@ -20,6 +22,8 @@ enum imv_event_type {
+ struct imv_event {
+   enum imv_event_type type;
+   union {
++    bool relay_focus;
++    struct { int code, state; } relay_key;
+     struct {
+       int width;
+       int height;
+diff --git i/src/wl_window.c w/src/wl_window.c
+index a4badc6..4fe0f88 100644
+--- i/src/wl_window.c
++++ w/src/wl_window.c
+@@ -5,6 +5,7 @@
+ #include "log.h"
+ 
+ #include <assert.h>
++#include <stdatomic.h>
+ #include <fcntl.h>
+ #include <limits.h>
+ #include <poll.h>
+@@ -49,6 +50,9 @@ struct imv_window {
+   int pipe_fds[2];
+ 
+   timer_t timer_id;
++  atomic_bool relay_focus;
++  bool relay_timer_ready;
++  bool relay_down[768];
+   int repeat_scancode; /* scancode of key to repeat */
+   int repeat_delay; /* time before repeat in ms */
+   int repeat_interval; /* time between repeats in ms */
+@@ -169,23 +173,37 @@ static void keyboard_keymap(void *data, struct wl_keyboard *keyboard,
+   close(fd);
+ }
+ 
++static void relay_focus_event(struct imv_window *window, bool focus)
++{
++  window->relay_focus = focus;
++  memset(window->relay_down, 0, sizeof window->relay_down);
++  struct itimerspec off = {0};
++  if (window->relay_timer_ready) timer_settime(window->timer_id, 0, &off, NULL);
++  struct imv_event e = {.type=IMV_EVENT_RELAY_FOCUS, .data.relay_focus=focus};
++  imv_window_push_event(window, &e);
++}
++static void relay_key_event(struct imv_window *window, int code, int state)
++{
++  if (!window->relay_focus) return;
++  struct imv_event e = {.type=IMV_EVENT_RELAY_KEY,
++    .data.relay_key={.code=code, .state=state}};
++  imv_window_push_event(window, &e);
++}
+ static void keyboard_enter(void *data, struct wl_keyboard *keyboard,
+     uint32_t serial, struct wl_surface *surface, struct wl_array *keys)
+ {
+-  (void)data;
+-  (void)keyboard;
+-  (void)serial;
+-  (void)surface;
+-  (void)keys;
++  (void)keyboard; (void)serial;
++  struct imv_window *window = data;
++  relay_focus_event(window, surface == window->wl_surface);
++  uint32_t *key;
++  wl_array_for_each(key, keys) if (*key < 768) window->relay_down[*key] = true;
+ }
+ 
+ static void keyboard_leave(void *data, struct wl_keyboard *keyboard,
+     uint32_t serial, struct wl_surface *surface)
+ {
+-  (void)data;
+-  (void)keyboard;
+-  (void)serial;
+-  (void)surface;
++  (void)keyboard; (void)serial; (void)surface;
++  relay_focus_event(data, false);
+ }
+ 
+ static void cleanup_event(struct imv_event *event)
+@@ -232,6 +250,12 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
+   (void)time;
+   struct imv_window *window = data;
+ 
++  int event_state = state ? 1 : 0;
++  if (key < 768) {
++    if (state && window->relay_down[key]) event_state = 2;
++    window->relay_down[key] = state;
++  }
++  relay_key_event(window, key, event_state);
+   imv_keyboard_update_key(window->keyboard, key, state);
+ 
+   if (!state) {
+@@ -246,7 +270,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
+         .tv_nsec = 0,
+       },
+     };
+-    timer_settime(window->timer_id, 0, &off, NULL);
++    if (window->relay_timer_ready) timer_settime(window->timer_id, 0, &off, NULL);
+     return;
+   }
+ 
+@@ -254,7 +278,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
+ 
+   wl_display_roundtrip(window->wl_display);
+ 
+-  if (imv_keyboard_should_key_repeat(window->keyboard, key)) {
++  if (window->relay_timer_ready && window->repeat_interval > 0 && imv_keyboard_should_key_repeat(window->keyboard, key)) {
+     /* Kick off the key-repeat timer for the current key */
+     window->repeat_scancode = key;
+     struct itimerspec period = {
+@@ -292,7 +316,7 @@ static void keyboard_repeat(void *data, struct wl_keyboard *keyboard,
+   (void)keyboard;
+   struct imv_window *window = data;
+   window->repeat_delay = delay;
+-  window->repeat_interval = 1000 / rate;
++  window->repeat_interval = rate > 0 ? 1000 / rate : 0;
+ }
+ 
+ static const struct wl_keyboard_listener keyboard_listener = {
+@@ -954,7 +978,8 @@ static void shutdown_wayland(struct imv_window *window)
+ static void on_timer(union sigval sigval)
+ {
+   struct imv_window *window = sigval.sival_ptr;
+-  push_keypress(window, window->repeat_scancode);
++  relay_key_event(window, window->repeat_scancode, 2);
++  if (window->relay_focus) push_keypress(window, window->repeat_scancode);
+ }
+ 
+ extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+@@ -972,6 +997,7 @@ struct imv_window *imv_window_create(int width, int height, const char *title,
+   assert(sizeof(struct imv_event) <= PIPE_BUF);
+ 
+   struct imv_window *window = calloc(1, sizeof *window);
++  atomic_init(&window->relay_focus, false);
+   window->scale = 1;
+ 
+   window->keyboard = imv_keyboard_create();
+@@ -990,6 +1016,7 @@ struct imv_window *imv_window_create(int width, int height, const char *title,
+   };
+   int timer_rc = timer_create(CLOCK_MONOTONIC, &timer_handler, &window->timer_id);
+   assert(timer_rc == 0);
++  window->relay_timer_ready = true;
+   return window;
+ }
+ 

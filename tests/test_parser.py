@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-from vaultgame import parser
-from vaultgame.parser import CommandParseError, ParsedCommand, parse_command
+from relayvault import parser
+from relayvault.parser import CommandParseError, ParsedCommand, parse_command
 
 
 def test_command_with_no_arguments():

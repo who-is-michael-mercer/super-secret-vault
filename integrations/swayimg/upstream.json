@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/artemsen/swayimg.git",
+  "commit": "7e7590a19ab5e93f1272ecb810e47f4d8a163549",
+  "describe": "v5.6-9-g7e7590a",
+  "build": "Wayland only; compositor integration and DRM disabled; PNG enabled; liblua=lua",
+  "build_tools": {"meson": "1.12.0", "ninja": "1.13.2"}
+}

@@ -1,0 +1,412 @@
+{
+  "native_wayland_load_and_focus": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      75,
+      0
+    ],
+    "zoom": 2,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "eligible_at_actual_scale": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": true,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "wrong_zoom": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      -422,
+      -373
+    ],
+    "zoom": 3.24339751,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "wrong_viewport": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      975,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "rotation_rejected": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 90,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "mirror_rejected": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": true,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "window_framebuffer_resize": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      1280,
+      720
+    ],
+    "framebuffer": [
+      2560,
+      1440
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "focus_leave": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": false,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "focus_reenter": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": true,
+    "focus": true,
+    "file_ok": true,
+    "generation": 1,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "other_image": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": false,
+    "generation": 2,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      475,
+      300
+    ],
+    "zoom": 1,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47785,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f6f746865722e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f6f746865722e706e67"
+  },
+  "replacement_rejects_stale_display": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": false,
+    "generation": 3,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      75,
+      0
+    ],
+    "zoom": 2,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47784,
+    "pending_draw": false,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "explicit_reload_binds_new_inode": {
+    "viewer": "imv-5.0.1-relay-probe",
+    "pid": 177171,
+    "eligible": false,
+    "focus": true,
+    "file_ok": true,
+    "generation": 5,
+    "image": [
+      800,
+      600
+    ],
+    "window": [
+      875,
+      600
+    ],
+    "framebuffer": [
+      1750,
+      1200
+    ],
+    "origin": [
+      75,
+      0
+    ],
+    "zoom": 2,
+    "rotation": 0,
+    "mirror": false,
+    "prefix": 0,
+    "resets": 0,
+    "matches": 0,
+    "loaded_inode": 47949,
+    "pending_draw": true,
+    "loaded_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67",
+    "selected_path_hex": "2f746d702f72656c61792d696d762d7761796c616e642d707a397a7176736d2f677269642e706e67"
+  },
+  "input_synthesis": false,
+  "viewer_stderr": ""
+}
